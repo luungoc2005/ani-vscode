@@ -146,6 +146,15 @@ export class LAppDelegate {
   }
 
   /**
+   * Advance to the next model/character on all subdelegates.
+   */
+  public nextScene(): void {
+    for (let i = 0; i < this._subdelegates.getSize(); i++) {
+      this._subdelegates.at(i).getLive2DManager().nextScene();
+    }
+  }
+
+  /**
    * Release resources.
    */
   private release(): void {

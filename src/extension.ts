@@ -120,6 +120,8 @@ export function activate(context: vscode.ExtensionContext) {
     // LLM single-flight state
     let llmInFlight = false;
     let roastDebounceTimer: NodeJS.Timeout | undefined;
+    let cooldownTimer: NodeJS.Timeout | undefined;
+    let lastLlmEndedAt: number | null = null;
 
     // Chat history state (maintained while editing the same file)
     let chatHistory: Array<SystemMessage | HumanMessage | AIMessage> = [];
@@ -163,15 +165,48 @@ export function activate(context: vscode.ExtensionContext) {
       const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
       const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
       const systemPrompt = cfg.get<string>('llm.systemPrompt', 'You are a ruthless but witty code critic. Roast the code concisely with sharp, constructive jabs.');
+      const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
+      const now = Date.now();
+      if (lastLlmEndedAt !== null) {
+        const elapsedMs = now - lastLlmEndedAt;
+        const minMs = minIntervalSec * 1000;
+        if (elapsedMs < minMs) {
+          const delay = Math.max(0, minMs - elapsedMs);
+          if (cooldownTimer) clearTimeout(cooldownTimer);
+          cooldownTimer = setTimeout(() => {
+            cooldownTimer = undefined;
+            roastNow();
+          }, delay);
+          return;
+        }
+      }
 
       try {
         llmInFlight = true;
+        // Notify webview that LLM call has started
+        panel.webview.postMessage({ type: 'thinking', on: true });
         const doc = editor.document;
         const pos = editor.selection.active;
         touchFile(doc.uri);
 
         const context10 = getLinesAround(doc, pos.line, 10);
+        const context10LinesAbove = context10.start; // number of lines before the snippet
+        const context10LinesBelow = (doc.lineCount - 1) - context10.end; // number of lines after the snippet
         const snippet2 = getLinesAround(doc, pos.line, 2);
+        // Determine if there is an error diagnostic on the focused line
+        const hasErrorAtFocusedLine = (() => {
+          try {
+            const diags = vscode.languages.getDiagnostics(doc.uri) || [];
+            return diags.some((d) =>
+              d?.severity === vscode.DiagnosticSeverity.Error &&
+              typeof d?.range?.start?.line === 'number' &&
+              typeof d?.range?.end?.line === 'number' &&
+              d.range.start.line <= pos.line && pos.line <= d.range.end.line
+            );
+          } catch {
+            return false;
+          }
+        })();
         // Insert caret indicator into focused snippet display
         const snippet2Display = (() => {
           const lines = snippet2.text.split('\n');
@@ -179,7 +214,7 @@ export function activate(context: vscode.ExtensionContext) {
           // Above we used context10.start by mistake; use snippet2 range for accuracy
           const correctedCaretLineIndex = pos.line - snippet2.start;
           const targetIndex = correctedCaretLineIndex;
-          if (targetIndex >= 0 && targetIndex < lines.length) {
+          if (hasErrorAtFocusedLine && targetIndex >= 0 && targetIndex < lines.length) {
             const line = lines[targetIndex];
             const insertAt = clamp(pos.character, 0, line.length);
             lines[targetIndex] = line.slice(0, insertAt) + '...' + line.slice(insertAt);
@@ -213,21 +248,30 @@ export function activate(context: vscode.ExtensionContext) {
           lastAnchorLine = pos.line; // move anchor when we re-add context
         }
 
+        const ellipsisNote = hasErrorAtFocusedLine
+          ? 'Important: The ellipsis is only added for you to know the position of the caret and not a part of the code'
+          : '';
+
+        const instructionWithNote = (baseInstruction: string) =>
+          ellipsisNote ? `${ellipsisNote}\n\n${baseInstruction}` : baseInstruction;
+
         const userPrompt = includeContext10
           ? [
               `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
               '',
               'Context:',
+              ...(context10LinesAbove > 0 ? [`(${context10LinesAbove} lines above)`] : []),
               '```',
               context10.text,
               '```',
+              ...(context10LinesBelow > 0 ? [`(${context10LinesBelow} lines below)`] : []),
               '',
               'Focused snippet:',
               '```',
               snippet2Display,
               '```',
               '',
-              'Roast the code above. Be concise, witty, and constructive.'
+              instructionWithNote('Roast the code above. Be concise, witty, and constructive.')
             ].join('\n')
           : [
               `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
@@ -235,7 +279,7 @@ export function activate(context: vscode.ExtensionContext) {
               '```',
               snippet2Display,
               '```',
-              'Continue roasting based on prior context. Be concise and witty.'
+              instructionWithNote('Continue roasting based on prior context. Be concise and witty.')
             ].join('\n');
 
         const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
@@ -273,6 +317,9 @@ export function activate(context: vscode.ExtensionContext) {
         panel.webview.postMessage({ type: 'speech', text: `LLM error: ${msg}` });
       } finally {
         llmInFlight = false;
+        lastLlmEndedAt = Date.now();
+        // Notify webview that LLM call has ended
+        panel.webview.postMessage({ type: 'thinking', on: false });
       }
     };
 
