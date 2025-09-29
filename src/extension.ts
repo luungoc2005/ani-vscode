@@ -172,6 +172,20 @@ export function activate(context: vscode.ExtensionContext) {
 
         const context10 = getLinesAround(doc, pos.line, 10);
         const snippet2 = getLinesAround(doc, pos.line, 2);
+        // Insert caret indicator into focused snippet display
+        const snippet2Display = (() => {
+          const lines = snippet2.text.split('\n');
+          const caretLineIndex = pos.line - (context10 ? context10.start : pos.line);
+          // Above we used context10.start by mistake; use snippet2 range for accuracy
+          const correctedCaretLineIndex = pos.line - snippet2.start;
+          const targetIndex = correctedCaretLineIndex;
+          if (targetIndex >= 0 && targetIndex < lines.length) {
+            const line = lines[targetIndex];
+            const insertAt = clamp(pos.character, 0, line.length);
+            lines[targetIndex] = line.slice(0, insertAt) + '...' + line.slice(insertAt);
+          }
+          return lines.join('\n');
+        })();
 
         const language = doc.languageId;
         const absPath = doc.uri.fsPath;
@@ -210,7 +224,7 @@ export function activate(context: vscode.ExtensionContext) {
               '',
               'Focused snippet:',
               '```',
-              snippet2.text,
+              snippet2Display,
               '```',
               '',
               'Roast the code above. Be concise, witty, and constructive.'
@@ -219,7 +233,7 @@ export function activate(context: vscode.ExtensionContext) {
               `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
               'Snippet:',
               '```',
-              snippet2.text,
+              snippet2Display,
               '```',
               'Continue roasting based on prior context. Be concise and witty.'
             ].join('\n');

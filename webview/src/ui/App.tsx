@@ -21,8 +21,8 @@ export function App() {
   const [opacity, setOpacity] = useState(0);
   const currentTargetTextRef = useRef('');
   const currentOptionsRef = useRef<{ durationMs: number; speedMsPerChar: number }>({
-    durationMs: 3000,
-    speedMsPerChar: 35
+    durationMs: 30000,
+    speedMsPerChar: 8,
   });
 
   const copyTextToClipboard = async (text: string) => {
