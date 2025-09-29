@@ -1,0 +1,50 @@
+{
+  "name": "ani-vscode",
+  "displayName": "Ani VSCode",
+  "description": "Live2D Cubism viewer (Hiyori & Mao) in a VSCode webview panel.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ani-vscode.showPanel",
+        "title": "Ani: Show Cubism Panel"
+      }
+    ],
+    "configuration": {
+      "title": "Ani VSCode",
+      "properties": {
+        "ani-vscode.transparentBackground": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render the viewer with a transparent background."
+        },
+        "ani-vscode.character": {
+          "type": "string",
+          "enum": ["Hiyori", "Mao"],
+          "default": "Mao",
+          "description": "Which character model to load."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "prepublish": "npm run build",
+    "build": "npm run compile && cd webview && npm install --no-audit --no-fund && npm run build",
+    "postinstall": "cd webview && npm install --no-audit --no-fund && npm run build"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.4",
+    "@types/node": "^22.5.2"
+  },
+  "license": "SEE LICENSE IN LICENSE.md"
+}
+
