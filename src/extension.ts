@@ -73,6 +73,45 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     panel.webview.html = html;
+
+    let panelColumn = panel.viewColumn;
+    panel.onDidChangeViewState((e) => {
+      panelColumn = e.webviewPanel.viewColumn;
+    });
+
+    // Post caret position updates to the webview when an editor is focused and selection changes
+    const postCaret = () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+      const sel = editor.selection;
+      const pos = sel.active;
+      const doc = editor.document;
+      const totalLines = doc.lineCount;
+      const lineText = doc.lineAt(pos.line).text;
+      const lineLen = lineText.length || 1;
+      // Normalize by editor viewport dimensions is non-trivial; approximate with doc position
+      // X: column within line; Y: line within document
+      const normX = Math.max(0, Math.min(1, pos.character / lineLen));
+      const normY = Math.max(0, Math.min(1, pos.line / Math.max(1, totalLines - 1)));
+      const editorColumn = editor.viewColumn;
+      let side: 'left' | 'right' | 'same' = 'same';
+      if (typeof editorColumn === 'number' && typeof panelColumn === 'number') {
+        if (editorColumn < panelColumn) side = 'left';
+        else if (editorColumn > panelColumn) side = 'right';
+        else side = 'same';
+      }
+      panel.webview.postMessage({ type: 'caret', x: normX, y: normY, side });
+    };
+
+    const selectionListener = vscode.window.onDidChangeTextEditorSelection(() => postCaret());
+    const focusListener = vscode.window.onDidChangeActiveTextEditor(() => postCaret());
+    const keysListener = vscode.workspace.onDidChangeTextDocument(() => postCaret());
+
+    panel.onDidDispose(() => {
+      selectionListener.dispose();
+      focusListener.dispose();
+      keysListener.dispose();
+    });
   });
 
   context.subscriptions.push(disposable);

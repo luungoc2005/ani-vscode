@@ -102,6 +102,26 @@ export class LAppDelegate {
   }
 
   /**
+   * Programmatically move pointer on canvas using normalized [0..1] coordinates.
+   * This is used to drive gaze based on external inputs (e.g., editor caret).
+   */
+  public pointMovedNormalized(normalizedX: number, normalizedY: number): void {
+    const clamp = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+    const nx = clamp(normalizedX);
+    const ny = clamp(normalizedY);
+
+    for (let i = 0; i < this._canvases.getSize(); i++) {
+      const canvas = this._canvases.at(i);
+      const localX = nx * canvas.clientWidth;
+      const localY = ny * canvas.clientHeight;
+      const pageX = canvas.offsetLeft + localX;
+      const pageY = canvas.offsetTop + localY;
+
+      this._subdelegates.at(i).onPointMoved(pageX, pageY);
+    }
+  }
+
+  /**
    * Main loop execution.
    */
   public run(): void {
