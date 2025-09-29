@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { ChatOpenAI, ChatOpenAIFields } from '@langchain/openai';
+import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
 export function activate(context: vscode.ExtensionContext) {
   const disposable = vscode.commands.registerCommand('ani-vscode.showPanel', () => {
@@ -103,9 +105,142 @@ export function activate(context: vscode.ExtensionContext) {
       panel.webview.postMessage({ type: 'caret', x: normX, y: normY, side });
     };
 
-    const selectionListener = vscode.window.onDidChangeTextEditorSelection(() => postCaret());
-    const focusListener = vscode.window.onDidChangeActiveTextEditor(() => postCaret());
-    const keysListener = vscode.workspace.onDidChangeTextDocument(() => postCaret());
+    // Track last edited files (MRU) for context
+    const lastEditedFiles: string[] = [];
+    const touchFile = (uri: vscode.Uri | undefined) => {
+      if (!uri) return;
+      const fsPath = uri.fsPath;
+      const idx = lastEditedFiles.indexOf(fsPath);
+      if (idx !== -1) lastEditedFiles.splice(idx, 1);
+      lastEditedFiles.unshift(fsPath);
+      // keep only last 5
+      if (lastEditedFiles.length > 5) lastEditedFiles.length = 5;
+    };
+
+    // LLM single-flight state
+    let llmInFlight = false;
+    let roastDebounceTimer: NodeJS.Timeout | undefined;
+
+    const getRelativePath = (absPath: string) => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) return absPath;
+      for (const folder of folders) {
+        const rel = path.relative(folder.uri.fsPath, absPath);
+        if (!rel.startsWith('..')) return rel || path.basename(absPath);
+      }
+      return path.basename(absPath);
+    };
+
+    const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+    const getLinesAround = (doc: vscode.TextDocument, centerLine: number, radius: number) => {
+      const start = clamp(centerLine - radius, 0, doc.lineCount - 1);
+      const end = clamp(centerLine + radius, 0, doc.lineCount - 1);
+      const lines: string[] = [];
+      for (let i = start; i <= end; i++) {
+        lines.push(doc.lineAt(i).text);
+      }
+      return { start, end, text: lines.join('\n') };
+    };
+
+    const maybeRoast = () => {
+      if (roastDebounceTimer) clearTimeout(roastDebounceTimer);
+      // debounce slightly to avoid spamming on rapid cursor/keys
+      roastDebounceTimer = setTimeout(() => roastNow(), 500);
+    };
+
+    const roastNow = async () => {
+      if (llmInFlight) return;
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+      // Ensure we have LLM settings
+      const cfg = vscode.workspace.getConfiguration('ani-vscode');
+      const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
+      const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
+      const systemPrompt = cfg.get<string>('llm.systemPrompt', 'You are a ruthless but witty code critic. Roast the code concisely with sharp, constructive jabs.');
+
+      try {
+        llmInFlight = true;
+        const doc = editor.document;
+        const pos = editor.selection.active;
+        touchFile(doc.uri);
+
+        const mruPaths = lastEditedFiles.map(getRelativePath);
+        const context10 = getLinesAround(doc, pos.line, 10);
+        const snippet2 = getLinesAround(doc, pos.line, 2);
+
+        const language = doc.languageId;
+        const filePath = getRelativePath(doc.uri.fsPath);
+
+        const userPrompt = [
+          `Workspace last edited files:`,
+          mruPaths.map((p, i) => `${i + 1}. ${p}`).join('\n'),
+          '',
+          `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
+          '',
+          'Context:',
+          '```',
+          context10.text,
+          '```',
+          '',
+          'Focused snippet:',
+          '```',
+          snippet2.text,
+          '```',
+          '',
+          'Roast the code above. Be concise, witty, and constructive. Highlight either biggest smells or quick wins, whichever you think is more important.'
+        ].join('\n');
+
+        const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
+        const llmFields: ChatOpenAIFields = {
+          model,
+          configuration: { baseURL: baseUrl },
+        };
+        if (apiKey) {
+          llmFields.apiKey = apiKey;
+        }
+        const llm = new ChatOpenAI(llmFields);
+
+        const aiMsg = await llm.invoke([
+          new SystemMessage(systemPrompt),
+          new HumanMessage(userPrompt)
+        ]);
+
+        const text = typeof aiMsg.content === 'string'
+          ? aiMsg.content
+          : Array.isArray(aiMsg.content)
+            ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
+            : String(aiMsg.content ?? '');
+
+        panel.webview.postMessage({ type: 'speech', text });
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        panel.webview.postMessage({ type: 'speech', text: `LLM error: ${msg}` });
+      } finally {
+        llmInFlight = false;
+      }
+    };
+
+    const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
+      postCaret();
+      touchFile(e.textEditor?.document?.uri);
+      // Only trigger when the editor is focused
+      if (vscode.window.activeTextEditor?.document === e.textEditor.document) {
+        maybeRoast();
+      }
+    });
+    const focusListener = vscode.window.onDidChangeActiveTextEditor((ed) => {
+      postCaret();
+      touchFile(ed?.document?.uri);
+      if (ed) maybeRoast();
+    });
+    const keysListener = vscode.workspace.onDidChangeTextDocument((ev) => {
+      postCaret();
+      touchFile(ev.document.uri);
+      if (vscode.window.activeTextEditor?.document === ev.document) {
+        maybeRoast();
+      }
+    });
 
     panel.onDidDispose(() => {
       selectionListener.dispose();

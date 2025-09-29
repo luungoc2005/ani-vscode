@@ -25,6 +25,27 @@ export function App() {
     speedMsPerChar: 35
   });
 
+  const copyTextToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch {}
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch {}
+  };
+
   useEffect(() => {
     if (!containerRef.current) return;
     const dispose = bootCubism(containerRef.current);
@@ -113,7 +134,7 @@ export function App() {
     document.addEventListener('pointermove', onPointerMove, { passive: true });
 
     // Show default message
-    showSpeech('Hello World');
+    // showSpeech('Hello World');
 
     return () => {
       if (typingTimerRef.current != null) window.clearInterval(typingTimerRef.current);
@@ -132,7 +153,7 @@ export function App() {
             left: '50%',
             bottom: '24px',
             transform: 'translateX(-50%)',
-            maxWidth: '80%',
+            maxWidth: '90%',
             background: 'rgba(0, 0, 0, 0.55)',
             color: '#fff',
             borderRadius: '16px',
@@ -141,17 +162,23 @@ export function App() {
             backdropFilter: 'blur(2px)',
             WebkitBackdropFilter: 'blur(2px)',
             fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
-            fontSize: '14px',
-            lineHeight: 1.4,
+            fontSize: '12px',
+            lineHeight: 1.2,
             opacity,
             transition: 'opacity 400ms ease',
-            pointerEvents: 'none'
+            pointerEvents: 'auto',
+            cursor: 'pointer'
           }}
+          title="Click to copy"
           onTransitionEnd={() => {
             if (opacity === 0) {
               setIsVisible(false);
               setDisplayText('');
             }
+          }}
+          onClick={() => {
+            const textToCopy = currentTargetTextRef.current || displayText;
+            void copyTextToClipboard(textToCopy);
           }}
         >
           {displayText}
