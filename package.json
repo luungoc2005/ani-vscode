@@ -1,7 +1,7 @@
 {
   "name": "ani-vscode",
   "displayName": "Ani VSCode",
-  "description": "Live2D Cubism viewer (Hiyori & Mao) in a VSCode webview panel.",
+  "description": "VSCode extension that gives you a little AI assistant in your code editor.",
   "version": "0.0.1",
   "publisher": "local",
   "engines": {
