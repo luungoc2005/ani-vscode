@@ -2,13 +2,13 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ChatOpenAI, ChatOpenAIFields } from '@langchain/openai';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 
 export function activate(context: vscode.ExtensionContext) {
   const disposable = vscode.commands.registerCommand('ani-vscode.showPanel', () => {
     const panel = vscode.window.createWebviewPanel(
       'aniVscodePanel',
-      'Ani: Cubism Viewer',
+      'Ani: AI Assistant',
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -121,6 +121,11 @@ export function activate(context: vscode.ExtensionContext) {
     let llmInFlight = false;
     let roastDebounceTimer: NodeJS.Timeout | undefined;
 
+    // Chat history state (maintained while editing the same file)
+    let chatHistory: Array<SystemMessage | HumanMessage | AIMessage> = [];
+    let lastFilePath: string | null = null;
+    let lastAnchorLine: number | null = null;
+
     const getRelativePath = (absPath: string) => {
       const folders = vscode.workspace.workspaceFolders;
       if (!folders || folders.length === 0) return absPath;
@@ -165,31 +170,59 @@ export function activate(context: vscode.ExtensionContext) {
         const pos = editor.selection.active;
         touchFile(doc.uri);
 
-        const mruPaths = lastEditedFiles.map(getRelativePath);
         const context10 = getLinesAround(doc, pos.line, 10);
         const snippet2 = getLinesAround(doc, pos.line, 2);
 
         const language = doc.languageId;
-        const filePath = getRelativePath(doc.uri.fsPath);
+        const absPath = doc.uri.fsPath;
+        const filePath = getRelativePath(absPath);
 
-        const userPrompt = [
-          `Workspace last edited files:`,
-          mruPaths.map((p, i) => `${i + 1}. ${p}`).join('\n'),
-          '',
-          `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
-          '',
-          'Context:',
-          '```',
-          context10.text,
-          '```',
-          '',
-          'Focused snippet:',
-          '```',
-          snippet2.text,
-          '```',
-          '',
-          'Roast the code above. Be concise, witty, and constructive. Highlight either biggest smells or quick wins, whichever you think is more important.'
-        ].join('\n');
+        // Reset chat history when switching to a different file
+        if (lastFilePath !== absPath) {
+          chatHistory = [];
+          lastFilePath = absPath;
+          lastAnchorLine = pos.line; // establish new anchor at current line
+        }
+
+        // Ensure system prompt is present at the start of history
+        if (chatHistory.length === 0 || !(chatHistory[0] instanceof SystemMessage)) {
+          chatHistory.unshift(new SystemMessage(systemPrompt));
+        }
+
+        // Decide whether to include a wider context
+        let includeContext10 = false;
+        if (lastAnchorLine == null) {
+          includeContext10 = true;
+          lastAnchorLine = pos.line;
+        } else if (Math.abs(pos.line - lastAnchorLine) > 10) {
+          includeContext10 = true;
+          lastAnchorLine = pos.line; // move anchor when we re-add context
+        }
+
+        const userPrompt = includeContext10
+          ? [
+              `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
+              '',
+              'Context:',
+              '```',
+              context10.text,
+              '```',
+              '',
+              'Focused snippet:',
+              '```',
+              snippet2.text,
+              '```',
+              '',
+              'Roast the code above. Be concise, witty, and constructive.'
+            ].join('\n')
+          : [
+              `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
+              'Snippet:',
+              '```',
+              snippet2.text,
+              '```',
+              'Continue roasting based on prior context. Be concise and witty.'
+            ].join('\n');
 
         const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
         const llmFields: ChatOpenAIFields = {
@@ -201,16 +234,24 @@ export function activate(context: vscode.ExtensionContext) {
         }
         const llm = new ChatOpenAI(llmFields);
 
-        const aiMsg = await llm.invoke([
-          new SystemMessage(systemPrompt),
-          new HumanMessage(userPrompt)
-        ]);
+        const historyToSend = [...chatHistory, new HumanMessage(userPrompt)];
+        const aiMsg = await llm.invoke(historyToSend);
 
         const text = typeof aiMsg.content === 'string'
           ? aiMsg.content
           : Array.isArray(aiMsg.content)
             ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
             : String(aiMsg.content ?? '');
+
+        // Update chat history and prune if needed
+        chatHistory.push(new HumanMessage(userPrompt));
+        chatHistory.push(new AIMessage(text));
+        const MAX_HISTORY = 20; // includes system message
+        if (chatHistory.length > MAX_HISTORY) {
+          const system = chatHistory[0] instanceof SystemMessage ? [chatHistory[0]] : [];
+          const tail = chatHistory.slice(-1 * (MAX_HISTORY - system.length));
+          chatHistory = [...system, ...tail];
+        }
 
         panel.webview.postMessage({ type: 'speech', text });
       } catch (err: any) {
@@ -232,7 +273,16 @@ export function activate(context: vscode.ExtensionContext) {
     const focusListener = vscode.window.onDidChangeActiveTextEditor((ed) => {
       postCaret();
       touchFile(ed?.document?.uri);
-      if (ed) maybeRoast();
+      // Clear chat history when switching to a different file
+      if (ed && ed.document) {
+        const fsPath = ed.document.uri.fsPath;
+        if (lastFilePath !== null && lastFilePath !== fsPath) {
+          chatHistory = [];
+          lastAnchorLine = null;
+        }
+        lastFilePath = fsPath;
+        maybeRoast();
+      }
     });
     const keysListener = vscode.workspace.onDidChangeTextDocument((ev) => {
       postCaret();
