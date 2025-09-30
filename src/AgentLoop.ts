@@ -4,6 +4,7 @@ import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages
 import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
 import { PluginContext } from './plugins/IPlugin';
+import motionsMap from './motions_map.json';
 
 /**
  * Main agent loop that processes messages from the queue or plugins
@@ -150,6 +151,9 @@ export class AgentLoop {
 
       if (panel) {
         panel.webview.postMessage({ type: 'speech', text });
+        
+        // Trigger expression animation if fastModel is configured
+        await this.triggerExpression(text, panel, cfg);
       }
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -326,6 +330,9 @@ export class AgentLoop {
 
       if (panel) {
         panel.webview.postMessage({ type: 'speech', text });
+        
+        // Trigger expression animation if fastModel is configured
+        await this.triggerExpression(text, panel, cfg);
       }
     } catch (err: any) {
       const msg = err?.message || String(err);
@@ -340,6 +347,106 @@ export class AgentLoop {
       if (panel) {
         panel.webview.postMessage({ type: 'thinking', on: false });
       }
+    }
+  }
+
+  /**
+   * Trigger expression animation based on the AI response
+   */
+  private async triggerExpression(
+    aiResponse: string,
+    panel: vscode.WebviewPanel,
+    cfg: vscode.WorkspaceConfiguration
+  ): Promise<void> {
+    try {
+      const fastModel = cfg.get<string>('llm.fastModel', '');
+      if (!fastModel) {
+        // Expression feature disabled
+        return;
+      }
+
+      // Request current character from webview (in case user switched)
+      panel.webview.postMessage({ type: 'getCurrentModel' });
+      
+      // Wait for response from webview
+      const character = await new Promise<string>((resolve) => {
+        const timeout = setTimeout(() => {
+          // Fallback to config if no response
+          resolve(cfg.get<string>('character', 'Hiyori'));
+        }, 1000);
+        
+        const disposable = panel.webview.onDidReceiveMessage((msg) => {
+          if (msg.type === 'currentModel' && msg.modelName) {
+            clearTimeout(timeout);
+            disposable.dispose();
+            resolve(msg.modelName);
+          }
+        });
+      });
+      
+      // Get character expressions from motions map
+      const characterExpressions = motionsMap[character as keyof typeof motionsMap];
+      
+      if (!characterExpressions) {
+        return;
+      }
+      
+      const availableExpressions = Object.keys(characterExpressions);
+      
+      // Create prompt for fast model to choose expression
+      const expressionPrompt = `Based on the following AI response, choose the most appropriate expression from this list: ${availableExpressions.join(', ')}.
+
+AI Response: "${aiResponse}"
+
+Respond with ONLY the expression name, nothing else.`;
+      
+      // Call fast model
+      const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
+      const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
+      
+      const llmFields: ChatOpenAIFields = {
+        model: fastModel,
+        configuration: { baseURL: baseUrl },
+        temperature: 0.3,
+      };
+      if (apiKey) {
+        llmFields.apiKey = apiKey;
+      }
+      const llm = new ChatOpenAI(llmFields);
+      
+      const expressionMsg = await llm.invoke([new HumanMessage(expressionPrompt)]);
+      const expressionText = typeof expressionMsg.content === 'string'
+        ? expressionMsg.content.trim()
+        : String(expressionMsg.content ?? '').trim();
+      
+      // Find matching expression (case-insensitive, partial match)
+      let selectedExpression: string | null = null;
+      for (const expr of availableExpressions) {
+        if (expressionText.toLowerCase().includes(expr.toLowerCase())) {
+          selectedExpression = expr;
+          break;
+        }
+      }
+      
+      // If no match found, try exact match
+      if (!selectedExpression && availableExpressions.includes(expressionText)) {
+        selectedExpression = expressionText;
+      }
+      
+      // Get motion filename
+      if (selectedExpression) {
+        const motionFileName = characterExpressions[selectedExpression as keyof typeof characterExpressions];
+        if (motionFileName) {
+          // Send message to webview to play the motion
+          panel.webview.postMessage({
+            type: 'playMotionByFileName',
+            fileName: motionFileName,
+          });
+        }
+      }
+    } catch (err: any) {
+      // Silently fail - expression is optional
+      console.error('Error triggering expression:', err);
     }
   }
 

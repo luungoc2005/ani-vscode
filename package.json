@@ -53,8 +53,13 @@
         },
         "ani-vscode.llm.model": {
           "type": "string",
-          "default": "gemma3:12b",
-          "description": "Model name for the OpenAI-compatible API (e.g. gpt-4o-mini)."
+          "default": "gemma3:12b-it-qat",
+          "description": "Model name for the OpenAI-compatible API (e.g. gpt-4.1-mini)."
+        },
+        "ani-vscode.llm.fastModel": {
+          "type": "string",
+          "default": "gemma3:1b-it-qat",
+          "description": "Fast model name for expression generation (e.g. gpt-4.1-nano). Leave empty to disable expression animations."
         },
         "ani-vscode.llm.minIntervalSeconds": {
           "type": "number",

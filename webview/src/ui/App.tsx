@@ -82,6 +82,27 @@ export function App() {
         setShowDebugPanel((prev) => !prev);
       } else if (data.type === 'setDebugPanel' && typeof data.visible === 'boolean') {
         setShowDebugPanel(data.visible);
+      } else if (data.type === 'playMotionByFileName' && typeof data.fileName === 'string') {
+        // Get current model's motions and find the one matching fileName
+        if ((window as any).getAvailableMotions && (window as any).playMotion) {
+          const motionsData = (window as any).getAvailableMotions();
+          const motion = motionsData.motions?.find((m: any) => m.fileName === data.fileName);
+          if (motion) {
+            (window as any).playMotion(motion.group, motion.index);
+          }
+        }
+      } else if (data.type === 'getCurrentModel') {
+        // Respond with current model name
+        if ((window as any).getAvailableMotions) {
+          const motionsData = (window as any).getAvailableMotions();
+          const vscode = (window as any).acquireVsCodeApi?.();
+          if (vscode) {
+            vscode.postMessage({
+              type: 'currentModel',
+              modelName: motionsData.modelName || 'Hiyori',
+            });
+          }
+        }
       }
     };
 
