@@ -233,4 +233,111 @@ export class AgentLoop {
   setLastEditedFiles(files: string[]): void {
     (this as any).lastEditedFiles = files;
   }
+
+  /**
+   * Trigger a specific plugin by ID
+   */
+  async triggerPlugin(pluginId: string): Promise<void> {
+    if (this.llmInFlight) {
+      return;
+    }
+
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      return;
+    }
+
+    const cfg = vscode.workspace.getConfiguration('ani-vscode');
+    const plugin = this.pluginManager.getPlugin(pluginId);
+    
+    if (!plugin || !plugin.isEnabled(cfg)) {
+      return;
+    }
+
+    // Check cooldown
+    const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
+    const now = Date.now();
+    if (this.lastLlmEndedAt !== null) {
+      const elapsedMs = now - this.lastLlmEndedAt;
+      const minMs = minIntervalSec * 1000;
+      if (elapsedMs < minMs) {
+        // Skip if still in cooldown
+        return;
+      }
+    }
+
+    try {
+      this.llmInFlight = true;
+      
+      const panel = (this as any).panel as vscode.WebviewPanel;
+      if (panel) {
+        panel.webview.postMessage({ type: 'thinking', on: true });
+      }
+
+      const context = this.createPluginContext(editor, panel);
+      const pluginMessage = await plugin.generateMessage(context);
+      
+      if (!pluginMessage) {
+        return;
+      }
+
+      const userPrompt = pluginMessage.userPrompt;
+      
+      // Get LLM settings
+      const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
+      const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
+      const systemPrompt = cfg.get<string>('llm.systemPrompt', 'You are a helpful AI assistant.');
+      const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
+
+      // Ensure system prompt is present
+      if (this.chatHistory.length === 0 || !(this.chatHistory[0] instanceof SystemMessage)) {
+        this.chatHistory.unshift(new SystemMessage(systemPrompt));
+      }
+
+      const llmFields: ChatOpenAIFields = {
+        model,
+        configuration: { baseURL: baseUrl },
+      };
+      if (apiKey) {
+        llmFields.apiKey = apiKey;
+      }
+      const llm = new ChatOpenAI(llmFields);
+
+      const historyToSend = [...this.chatHistory, new HumanMessage(userPrompt)];
+      const aiMsg = await llm.invoke(historyToSend);
+
+      const text = typeof aiMsg.content === 'string'
+        ? aiMsg.content
+        : Array.isArray(aiMsg.content)
+          ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
+          : String(aiMsg.content ?? '');
+
+      // Update chat history
+      this.chatHistory.push(new HumanMessage(userPrompt));
+      this.chatHistory.push(new AIMessage(text));
+      const MAX_HISTORY = 20;
+      if (this.chatHistory.length > MAX_HISTORY) {
+        const system = this.chatHistory[0] instanceof SystemMessage ? [this.chatHistory[0]] : [];
+        const tail = this.chatHistory.slice(-1 * (MAX_HISTORY - system.length));
+        this.chatHistory = [...system, ...tail];
+      }
+
+      if (panel) {
+        panel.webview.postMessage({ type: 'speech', text });
+      }
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      const panel = (this as any).panel as vscode.WebviewPanel;
+      if (panel) {
+        panel.webview.postMessage({ type: 'speech', text: `LLM error: ${msg}` });
+      }
+    } finally {
+      this.llmInFlight = false;
+      this.lastLlmEndedAt = Date.now();
+      const panel = (this as any).panel as vscode.WebviewPanel;
+      if (panel) {
+        panel.webview.postMessage({ type: 'thinking', on: false });
+      }
+    }
+  }
 }

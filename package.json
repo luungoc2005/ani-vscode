@@ -66,6 +66,17 @@
           "type": "boolean",
           "default": true,
           "description": "Enable the Code Review plugin that analyzes and roasts your code."
+        },
+        "ani-vscode.plugins.hackerNews.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the HackerNews plugin that fetches top articles and asks the AI to comment."
+        },
+        "ani-vscode.plugins.hackerNews.periodicIntervalMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "How often (in minutes) the HackerNews plugin should automatically trigger. Set to 0 to disable periodic triggers."
         }
       }
     }

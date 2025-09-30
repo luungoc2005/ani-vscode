@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
 import { CodeReviewPlugin } from './plugins/CodeReviewPlugin';
+import { HackerNewsPlugin } from './plugins/HackerNewsPlugin';
 import { AgentLoop } from './AgentLoop';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -115,6 +116,9 @@ export function activate(context: vscode.ExtensionContext) {
     const codeReviewPlugin = new CodeReviewPlugin();
     pluginManager.register(codeReviewPlugin);
     
+    const hackerNewsPlugin = new HackerNewsPlugin();
+    pluginManager.register(hackerNewsPlugin);
+    
     // Initialize agent loop
     const agentLoop = new AgentLoop(messageQueue, pluginManager);
     agentLoop.setPanel(panel);
@@ -158,10 +162,50 @@ export function activate(context: vscode.ExtensionContext) {
       }
     });
 
+    // Set up periodic HackerNews trigger
+    let periodicTimer: NodeJS.Timeout | undefined;
+    const setupPeriodicTrigger = () => {
+      const cfg = vscode.workspace.getConfiguration('ani-vscode');
+      const intervalMinutes = cfg.get<number>('plugins.hackerNews.periodicIntervalMinutes', 30);
+      
+      // Clear existing timer
+      if (periodicTimer) {
+        clearInterval(periodicTimer);
+        periodicTimer = undefined;
+      }
+      
+      // Set up new timer if interval > 0
+      if (intervalMinutes > 0) {
+        const intervalMs = intervalMinutes * 60 * 1000;
+        periodicTimer = setInterval(() => {
+          agentLoop.triggerPlugin('hackerNews');
+        }, intervalMs);
+        
+        // Also trigger once after a short delay when first set up
+        setTimeout(() => {
+          agentLoop.triggerPlugin('hackerNews');
+        }, 5000); // 5 seconds after panel opens
+      }
+    };
+    
+    // Initial setup
+    setupPeriodicTrigger();
+    
+    // Listen for configuration changes
+    const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('ani-vscode.plugins.hackerNews.periodicIntervalMinutes')) {
+        setupPeriodicTrigger();
+      }
+    });
+
     panel.onDidDispose(() => {
       selectionListener.dispose();
       focusListener.dispose();
       keysListener.dispose();
+      configListener.dispose();
+      if (periodicTimer) {
+        clearInterval(periodicTimer);
+      }
     });
   });
 
