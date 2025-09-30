@@ -26,6 +26,11 @@ export class HackerNewsPlugin implements IPlugin {
     return config.get<boolean>('plugins.hackerNews.enabled', true);
   }
 
+  shouldTrigger(context: PluginContext): boolean {
+    // HackerNews plugin can always trigger (doesn't depend on editor state)
+    return true;
+  }
+
   /**
    * Fetch data from a URL using https module
    */

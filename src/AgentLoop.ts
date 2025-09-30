@@ -26,18 +26,18 @@ export class AgentLoop {
   /**
    * Trigger the agent loop with a debounce
    */
-  trigger(): void {
+  trigger(pluginId?: string): void {
     if (this.roastDebounceTimer) {
       clearTimeout(this.roastDebounceTimer);
     }
     // Debounce slightly to avoid spamming on rapid cursor/keys
-    this.roastDebounceTimer = setTimeout(() => this.run(), 500);
+    this.roastDebounceTimer = setTimeout(() => this.run(pluginId), 500);
   }
 
   /**
    * Run the agent loop immediately
    */
-  private async run(): Promise<void> {
+  private async run(pluginId?: string): Promise<void> {
     if (this.llmInFlight) {
       return;
     }
@@ -64,7 +64,7 @@ export class AgentLoop {
         if (this.cooldownTimer) clearTimeout(this.cooldownTimer);
         this.cooldownTimer = setTimeout(() => {
           this.cooldownTimer = undefined;
-          this.run();
+          this.run(pluginId);
         }, delay);
         return;
       }
@@ -104,9 +104,11 @@ export class AgentLoop {
         }
         userPrompt = message;
       } else {
-        // Get message from randomly selected plugin
+        // Get message from specific plugin or randomly selected plugin
         const context = this.createPluginContext(editor, panel);
-        const pluginMessage = await this.pluginManager.getRandomPluginMessage(context, cfg);
+        const pluginMessage = pluginId
+          ? await this.pluginManager.getPluginMessage(pluginId, context, cfg)
+          : await this.pluginManager.getRandomPluginMessage(context, cfg);
         
         if (!pluginMessage) {
           // No plugin available or no message generated
@@ -339,5 +341,35 @@ export class AgentLoop {
         panel.webview.postMessage({ type: 'thinking', on: false });
       }
     }
+  }
+
+  /**
+   * Trigger a randomly selected plugin
+   */
+  async triggerRandomPlugin(): Promise<void> {
+    if (this.llmInFlight) {
+      return;
+    }
+
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      return;
+    }
+
+    const cfg = vscode.workspace.getConfiguration('ani-vscode');
+    const panel = (this as any).panel as vscode.WebviewPanel;
+    
+    // Create context for shouldTrigger check
+    const context = this.createPluginContext(editor, panel);
+    
+    // Select a random plugin that should trigger in current context
+    const plugin = this.pluginManager.selectRandomPlugin(cfg, context);
+    
+    if (!plugin) {
+      return;
+    }
+
+    // Delegate to triggerPlugin
+    await this.triggerPlugin(plugin.id);
   }
 }

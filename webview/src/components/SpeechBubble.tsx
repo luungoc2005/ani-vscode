@@ -100,10 +100,9 @@ export function SpeechBubble(props: {
     <div
       style={{
         position: 'absolute',
-        left: '50%',
         bottom: '24px',
-        transform: 'translateX(-50%)',
-        maxWidth: '90%',
+        maxWidth: '100%',
+        margin: '0 12vw',
         background: 'rgba(0, 0, 0, 0.55)',
         color: '#fff',
         borderRadius: '16px',

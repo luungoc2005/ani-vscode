@@ -40,6 +40,13 @@ export interface IPlugin {
   isEnabled(config: vscode.WorkspaceConfiguration): boolean;
 
   /**
+   * Whether this plugin should trigger in the current context
+   * Used by the periodic trigger to filter out plugins that shouldn't run
+   * Returns true by default if not implemented
+   */
+  shouldTrigger?(context: PluginContext): boolean;
+
+  /**
    * Generate a message for the LLM based on current context
    * Returns null if the plugin cannot generate a message in the current state
    */

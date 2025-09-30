@@ -139,9 +139,9 @@ export function activate(context: vscode.ExtensionContext) {
     const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
       postCaret();
       touchFile(e.textEditor?.document?.uri);
-      // Only trigger when the editor is focused
+      // Only trigger when the editor is focused - trigger CodeReview plugin on selection changes
       if (vscode.window.activeTextEditor?.document === e.textEditor.document) {
-        agentLoop.trigger();
+        agentLoop.trigger('codeReview');
       }
     });
     const focusListener = vscode.window.onDidChangeActiveTextEditor((ed) => {
@@ -151,22 +151,23 @@ export function activate(context: vscode.ExtensionContext) {
       if (ed && ed.document) {
         agentLoop.resetChatHistory();
         codeReviewPlugin.resetAnchor();
-        agentLoop.trigger();
+        agentLoop.trigger('codeReview');
       }
     });
     const keysListener = vscode.workspace.onDidChangeTextDocument((ev) => {
       postCaret();
       touchFile(ev.document.uri);
+      // Trigger CodeReview plugin when user is typing
       if (vscode.window.activeTextEditor?.document === ev.document) {
-        agentLoop.trigger();
+        agentLoop.trigger('codeReview');
       }
     });
 
-    // Set up periodic HackerNews trigger
+    // Set up periodic plugin trigger (randomly selects from enabled plugins)
     let periodicTimer: NodeJS.Timeout | undefined;
     const setupPeriodicTrigger = () => {
       const cfg = vscode.workspace.getConfiguration('ani-vscode');
-      const intervalMinutes = cfg.get<number>('plugins.hackerNews.periodicIntervalMinutes', 30);
+      const intervalMinutes = cfg.get<number>('plugins.periodicIntervalMinutes', 30);
       
       // Clear existing timer
       if (periodicTimer) {
@@ -178,12 +179,12 @@ export function activate(context: vscode.ExtensionContext) {
       if (intervalMinutes > 0) {
         const intervalMs = intervalMinutes * 60 * 1000;
         periodicTimer = setInterval(() => {
-          agentLoop.triggerPlugin('hackerNews');
+          agentLoop.triggerRandomPlugin();
         }, intervalMs);
         
         // Also trigger once after a short delay when first set up
         setTimeout(() => {
-          agentLoop.triggerPlugin('hackerNews');
+          agentLoop.triggerRandomPlugin();
         }, 5000); // 5 seconds after panel opens
       }
     };
@@ -193,7 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Listen for configuration changes
     const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('ani-vscode.plugins.hackerNews.periodicIntervalMinutes')) {
+      if (e.affectsConfiguration('ani-vscode.plugins.periodicIntervalMinutes')) {
         setupPeriodicTrigger();
       }
     });

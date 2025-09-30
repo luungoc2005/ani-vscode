@@ -10,9 +10,36 @@ export class CodeReviewPlugin implements IPlugin {
 
   private lastAnchorLine: number | null = null;
   private lastFilePath: string | null = null;
+  private lastCaretLine: number | null = null;
+  private lastCaretCharacter: number | null = null;
+  private lastCaretFilePath: string | null = null;
 
   isEnabled(config: vscode.WorkspaceConfiguration): boolean {
     return config.get<boolean>('plugins.codeReview.enabled', true);
+  }
+
+  shouldTrigger(context: PluginContext): boolean {
+    const { editor } = context;
+    
+    if (!editor) {
+      return false;
+    }
+
+    const pos = editor.selection.active;
+    const absPath = editor.document.uri.fsPath;
+
+    // Check if caret position has changed since last check
+    const hasChanged = 
+      this.lastCaretFilePath !== absPath ||
+      this.lastCaretLine !== pos.line ||
+      this.lastCaretCharacter !== pos.character;
+
+    // Update last caret position
+    this.lastCaretFilePath = absPath;
+    this.lastCaretLine = pos.line;
+    this.lastCaretCharacter = pos.character;
+
+    return hasChanged;
   }
 
   async generateMessage(context: PluginContext): Promise<PluginMessage | null> {

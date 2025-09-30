@@ -16,8 +16,8 @@ export function ModelSwitchButton() {
       aria-label="Switch character"
       style={{
         position: 'absolute',
-        right: '10vw',
-        bottom: '24px',
+        left: '10vw',
+        top: '12px',
         width: '34px',
         height: '34px',
         borderRadius: '9999px',
