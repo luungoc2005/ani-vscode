@@ -67,6 +67,12 @@
           "minimum": 10,
           "description": "Minimum seconds between LLM requests. Enforced minimum is 10 seconds."
         },
+        "ani-vscode.llm.maxHistory": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Maximum number of messages to keep in chat history (including system message)."
+        },
         "ani-vscode.plugins.codeReview.enabled": {
           "type": "boolean",
           "default": true,
@@ -77,9 +83,24 @@
           "default": true,
           "description": "Enable the HackerNews plugin that fetches top articles and asks the AI to comment."
         },
+        "ani-vscode.plugins.rssFeed.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the RSS Feed plugin that fetches articles from configured RSS feeds and asks the AI to summarize."
+        },
+        "ani-vscode.plugins.rssFeed.feeds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml"
+          ],
+          "description": "List of RSS feed URLs to fetch articles from. The plugin will randomly select one feed each time it triggers."
+        },
         "ani-vscode.plugins.periodicIntervalMinutes": {
           "type": "number",
-          "default": 2,
+          "default": 1,
           "minimum": 0.5,
           "description": "How often (in minutes) a random plugin should automatically trigger. Set to 0 to disable periodic triggers."
         },

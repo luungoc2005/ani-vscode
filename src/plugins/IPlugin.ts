@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 export interface PluginMessage {
   userPrompt: string;
   includeContext: boolean;
+  text?: string; // Optional text to append to the LLM reply
 }
 
 /**

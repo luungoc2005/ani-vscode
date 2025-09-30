@@ -38,14 +38,19 @@ export class AgentLoop {
   /**
    * Run the agent loop immediately
    */
-  private async run(pluginId?: string): Promise<void> {
+  private async run(pluginId?: string, options?: { skipReschedule?: boolean }): Promise<void> {
     if (this.llmInFlight) {
       return;
     }
 
-    const editor = vscode.window.activeTextEditor;
+    // Try to get active editor, or fall back to first visible editor
+    let editor = vscode.window.activeTextEditor;
     if (!editor) {
-      return;
+      const visibleEditors = vscode.window.visibleTextEditors;
+      if (visibleEditors.length === 0) {
+        return;
+      }
+      editor = visibleEditors[0];
     }
 
     // Ensure we have LLM settings
@@ -54,6 +59,7 @@ export class AgentLoop {
     const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
     const systemPrompt = cfg.get<string>('llm.systemPrompt', 'You are a ruthless but witty code critic. Roast the code concisely with sharp, constructive jabs.');
     const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
+    const maxHistory = Math.max(1, cfg.get<number>('llm.maxHistory', 5));
 
     // Check cooldown
     const now = Date.now();
@@ -61,11 +67,15 @@ export class AgentLoop {
       const elapsedMs = now - this.lastLlmEndedAt;
       const minMs = minIntervalSec * 1000;
       if (elapsedMs < minMs) {
+        // If skipReschedule is true, just return (used by triggerPlugin)
+        if (options?.skipReschedule) {
+          return;
+        }
         const delay = Math.max(0, minMs - elapsedMs);
         if (this.cooldownTimer) clearTimeout(this.cooldownTimer);
         this.cooldownTimer = setTimeout(() => {
           this.cooldownTimer = undefined;
-          this.run(pluginId);
+          this.run(pluginId, options);
         }, delay);
         return;
       }
@@ -95,6 +105,7 @@ export class AgentLoop {
       }
 
       let userPrompt: string;
+      let appendText: string | undefined;
       
       // Check if there are user messages in the queue
       if (!this.messageQueue.isEmpty()) {
@@ -117,6 +128,7 @@ export class AgentLoop {
         }
         
         userPrompt = pluginMessage.userPrompt;
+        appendText = pluginMessage.text;
       }
 
       // Send to LLM
@@ -133,24 +145,26 @@ export class AgentLoop {
       const historyToSend = [...this.chatHistory, new HumanMessage(userPrompt)];
       const aiMsg = await llm.invoke(historyToSend);
 
-      const text = typeof aiMsg.content === 'string'
+      let text = typeof aiMsg.content === 'string'
         ? aiMsg.content
         : Array.isArray(aiMsg.content)
           ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
           : String(aiMsg.content ?? '');
+      text = this.stripCodeBlockTags(text);
 
       // Update chat history and prune if needed
       this.chatHistory.push(new HumanMessage(userPrompt));
       this.chatHistory.push(new AIMessage(text));
-      const MAX_HISTORY = 20; // includes system message
-      if (this.chatHistory.length > MAX_HISTORY) {
+      if (this.chatHistory.length > maxHistory) {
         const system = this.chatHistory[0] instanceof SystemMessage ? [this.chatHistory[0]] : [];
-        const tail = this.chatHistory.slice(-1 * (MAX_HISTORY - system.length));
+        const tail = this.chatHistory.slice(-1 * (maxHistory - system.length));
         this.chatHistory = [...system, ...tail];
       }
 
       if (panel) {
-        panel.webview.postMessage({ type: 'speech', text });
+        // Append plugin text if available
+        const displayText = appendText ? text + appendText : text;
+        panel.webview.postMessage({ type: 'speech', text: displayText });
         
         // Trigger expression animation if fastModel is configured
         await this.triggerExpression(text, panel, cfg);
@@ -240,19 +254,27 @@ export class AgentLoop {
     (this as any).lastEditedFiles = files;
   }
 
+
+  // Utility function to remove markdown code block tags
+  private stripCodeBlockTags(text: string): string {
+    // Only strip if the entire text is wrapped in code blocks
+    const trimmed = text.trim();
+    const startsWithCodeBlock = /^```\w*\n/.test(trimmed);
+    const endsWithCodeBlock = /\n```$/.test(trimmed);
+    
+    if (startsWithCodeBlock && endsWithCodeBlock) {
+      // Remove first line (opening ```) and last line (closing ```)
+      const lines = trimmed.split('\n');
+      return lines.slice(1, -1).join('\n');
+    }
+    
+    return text;
+  };
+
   /**
    * Trigger a specific plugin by ID
    */
   async triggerPlugin(pluginId: string): Promise<void> {
-    if (this.llmInFlight) {
-      return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-
     const cfg = vscode.workspace.getConfiguration('ani-vscode');
     const plugin = this.pluginManager.getPlugin(pluginId);
     
@@ -260,94 +282,8 @@ export class AgentLoop {
       return;
     }
 
-    // Check cooldown
-    const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
-    const now = Date.now();
-    if (this.lastLlmEndedAt !== null) {
-      const elapsedMs = now - this.lastLlmEndedAt;
-      const minMs = minIntervalSec * 1000;
-      if (elapsedMs < minMs) {
-        // Skip if still in cooldown
-        return;
-      }
-    }
-
-    try {
-      this.llmInFlight = true;
-      
-      const panel = (this as any).panel as vscode.WebviewPanel;
-      if (panel) {
-        panel.webview.postMessage({ type: 'thinking', on: true });
-      }
-
-      const context = this.createPluginContext(editor, panel);
-      const pluginMessage = await plugin.generateMessage(context);
-      
-      if (!pluginMessage) {
-        return;
-      }
-
-      const userPrompt = pluginMessage.userPrompt;
-      
-      // Get LLM settings
-      const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
-      const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
-      const systemPrompt = cfg.get<string>('llm.systemPrompt', 'You are a helpful AI assistant.');
-      const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
-
-      // Ensure system prompt is present
-      if (this.chatHistory.length === 0 || !(this.chatHistory[0] instanceof SystemMessage)) {
-        this.chatHistory.unshift(new SystemMessage(systemPrompt));
-      }
-
-      const llmFields: ChatOpenAIFields = {
-        model,
-        configuration: { baseURL: baseUrl },
-      };
-      if (apiKey) {
-        llmFields.apiKey = apiKey;
-      }
-      const llm = new ChatOpenAI(llmFields);
-
-      const historyToSend = [...this.chatHistory, new HumanMessage(userPrompt)];
-      const aiMsg = await llm.invoke(historyToSend);
-
-      const text = typeof aiMsg.content === 'string'
-        ? aiMsg.content
-        : Array.isArray(aiMsg.content)
-          ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
-          : String(aiMsg.content ?? '');
-
-      // Update chat history
-      this.chatHistory.push(new HumanMessage(userPrompt));
-      this.chatHistory.push(new AIMessage(text));
-      const MAX_HISTORY = 20;
-      if (this.chatHistory.length > MAX_HISTORY) {
-        const system = this.chatHistory[0] instanceof SystemMessage ? [this.chatHistory[0]] : [];
-        const tail = this.chatHistory.slice(-1 * (MAX_HISTORY - system.length));
-        this.chatHistory = [...system, ...tail];
-      }
-
-      if (panel) {
-        panel.webview.postMessage({ type: 'speech', text });
-        
-        // Trigger expression animation if fastModel is configured
-        await this.triggerExpression(text, panel, cfg);
-      }
-    } catch (err: any) {
-      const msg = err?.message || String(err);
-      const panel = (this as any).panel as vscode.WebviewPanel;
-      if (panel) {
-        panel.webview.postMessage({ type: 'speech', text: `LLM error: ${msg}` });
-      }
-    } finally {
-      this.llmInFlight = false;
-      this.lastLlmEndedAt = Date.now();
-      const panel = (this as any).panel as vscode.WebviewPanel;
-      if (panel) {
-        panel.webview.postMessage({ type: 'thinking', on: false });
-      }
-    }
+    // Delegate to run() with skipReschedule
+    await this.run(pluginId, { skipReschedule: true });
   }
 
   /**
@@ -458,9 +394,14 @@ Respond with ONLY the expression name, nothing else.`;
       return;
     }
 
-    const editor = vscode.window.activeTextEditor;
+    // Try to get active editor, or fall back to first visible editor
+    let editor = vscode.window.activeTextEditor;
     if (!editor) {
-      return;
+      const visibleEditors = vscode.window.visibleTextEditors;
+      if (visibleEditors.length === 0) {
+        return;
+      }
+      editor = visibleEditors[0];
     }
 
     const cfg = vscode.workspace.getConfiguration('ani-vscode');

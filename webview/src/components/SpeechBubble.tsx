@@ -22,22 +22,6 @@ export function SpeechBubble(props: {
     speedMsPerChar: 8,
   });
 
-  // Utility function to remove markdown code block tags
-  const stripCodeBlockTags = (text: string): string => {
-    // Only strip if the entire text is wrapped in code blocks
-    const trimmed = text.trim();
-    const startsWithCodeBlock = /^```\w*\n/.test(trimmed);
-    const endsWithCodeBlock = /\n```$/.test(trimmed);
-    
-    if (startsWithCodeBlock && endsWithCodeBlock) {
-      // Remove first line (opening ```) and last line (closing ```)
-      const lines = trimmed.split('\n');
-      return lines.slice(1, -1).join('\n');
-    }
-    
-    return text;
-  };
-
   // Create markdown-it instance
   const md = useMemo(() => {
     return new MarkdownIt({
@@ -61,7 +45,7 @@ export function SpeechBubble(props: {
     const speedMsPerChar = Math.max(5, options?.speedMsPerChar ?? optionsRef.current.speedMsPerChar);
     optionsRef.current = { durationMs, speedMsPerChar };
 
-    targetTextRef.current = stripCodeBlockTags(text);
+    targetTextRef.current = text;
     typingIndexRef.current = 0;
     setDisplayText('');
     setIsVisible(true);

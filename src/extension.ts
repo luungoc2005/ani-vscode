@@ -5,6 +5,7 @@ import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
 import { CodeReviewPlugin } from './plugins/CodeReviewPlugin';
 import { HackerNewsPlugin } from './plugins/HackerNewsPlugin';
+import { RSSFeedPlugin } from './plugins/RSSFeedPlugin';
 import { AgentLoop } from './AgentLoop';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -122,6 +123,9 @@ export function activate(context: vscode.ExtensionContext) {
     const hackerNewsPlugin = new HackerNewsPlugin();
     pluginManager.register(hackerNewsPlugin);
     
+    const rssFeedPlugin = new RSSFeedPlugin();
+    pluginManager.register(rssFeedPlugin);
+    
     // Initialize agent loop
     const agentLoop = new AgentLoop(messageQueue, pluginManager);
     agentLoop.setPanel(panel);
@@ -170,7 +174,7 @@ export function activate(context: vscode.ExtensionContext) {
     let periodicTimer: NodeJS.Timeout | undefined;
     const setupPeriodicTrigger = () => {
       const cfg = vscode.workspace.getConfiguration('ani-vscode');
-      const intervalMinutes = cfg.get<number>('plugins.periodicIntervalMinutes', 30);
+      const intervalMinutes = cfg.get<number>('plugins.periodicIntervalMinutes', 5);
       
       // Clear existing timer
       if (periodicTimer) {
@@ -188,7 +192,7 @@ export function activate(context: vscode.ExtensionContext) {
         // Also trigger once after a short delay when first set up
         setTimeout(() => {
           agentLoop.triggerRandomPlugin();
-        }, 5000); // 5 seconds after panel opens
+        }, 1000); // 10 seconds after panel opens
       }
     };
     

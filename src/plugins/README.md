@@ -23,6 +23,22 @@ This directory contains all plugin implementations for the AI assistant.
   - Also triggers normally when you're coding (along with other plugins)
   - Set interval to `0` to disable periodic triggers
 
+### RSS Feed Plugin
+- **File**: `RSSFeedPlugin.ts`
+- **Purpose**: Fetches articles from configured RSS feeds and asks the AI to summarize them
+- **Config**: 
+  - `ani-vscode.plugins.rssFeed.enabled` (default: `true`)
+  - `ani-vscode.plugins.rssFeed.feeds` (default: `["https://hnrss.org/frontpage", "https://www.theverge.com/rss/index.xml"]`)
+- **Default**: Enabled with 2 default feeds
+- **Features**: 
+  - Randomly selects one RSS feed from the configured list
+  - Fetches and parses RSS 2.0 and Atom feeds
+  - Selects 3 random articles from the feed
+  - Displays title, author, link, summary/content, and publication date
+  - **Periodic Trigger**: Automatically triggers every N minutes (configurable via `ani-vscode.plugins.periodicIntervalMinutes`)
+  - Configurable feed list - add your favorite RSS feeds in VS Code settings
+  - Supports both HTTP and HTTPS feeds with redirect handling
+
 ## Adding a New Plugin
 
 See `PLUGIN_SYSTEM.md` in the root directory for detailed instructions.

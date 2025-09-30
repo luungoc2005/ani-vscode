@@ -13,6 +13,19 @@ interface HNArticle {
   score: number;
   descendants?: number;
   text?: string;
+  kids?: number[];
+}
+
+/**
+ * HackerNews Comment Interface
+ */
+interface HNComment {
+  id: number;
+  by: string;
+  text?: string;
+  kids?: number[];
+  deleted?: boolean;
+  dead?: boolean;
 }
 
 /**
@@ -73,6 +86,63 @@ export class HackerNewsPlugin implements IPlugin {
   }
 
   /**
+   * Fetch comment details by ID
+   */
+  private async fetchComment(id: number): Promise<HNComment> {
+    const url = `https://hacker-news.firebaseio.com/v0/item/${id}.json`;
+    return this.fetchData(url);
+  }
+
+  /**
+   * Fetch top comments for an article
+   * Returns the first N valid (non-deleted, non-dead) comments
+   */
+  private async fetchTopComments(article: HNArticle, maxComments: number = 3): Promise<HNComment[]> {
+    if (!article.kids || article.kids.length === 0) {
+      return [];
+    }
+
+    const comments: HNComment[] = [];
+    
+    // Fetch comments in order until we have enough valid ones
+    for (const commentId of article.kids.slice(0, maxComments * 2)) {
+      if (comments.length >= maxComments) {
+        break;
+      }
+
+      try {
+        const comment = await this.fetchComment(commentId);
+        
+        // Skip deleted or dead comments
+        if (!comment.deleted && !comment.dead && comment.text) {
+          comments.push(comment);
+        }
+      } catch (error) {
+        // Skip comments that fail to fetch
+        continue;
+      }
+    }
+
+    return comments;
+  }
+
+  /**
+   * Strip HTML tags from text
+   */
+  private stripHtml(html: string): string {
+    return html
+      .replace(/<p>/g, '\n')
+      .replace(/<\/p>/g, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&#x27;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .trim();
+  }
+
+  /**
    * Randomly select N items from an array
    */
   private randomSelect<T>(array: T[], count: number): T[] {
@@ -85,10 +155,10 @@ export class HackerNewsPlugin implements IPlugin {
       // Fetch top stories (returns array of IDs)
       const topStoryIds = await this.fetchTopStories();
       
-      // Get top 30 stories and randomly select 3
-      const selectedIds = this.randomSelect(topStoryIds.slice(0, 30), 3);
+      // Get top 30 stories and randomly select 1
+      const selectedIds = this.randomSelect(topStoryIds.slice(0, 30), 1);
       
-      // Fetch article details for selected stories
+      // Fetch article details for selected story
       const articles = await Promise.all(
         selectedIds.map(id => this.fetchArticle(id))
       );
@@ -100,41 +170,53 @@ export class HackerNewsPlugin implements IPlugin {
         return null;
       }
 
-      // Format articles for the prompt
-      const articleSummaries = validArticles.map((article, idx) => {
-        const parts = [
-          `${idx + 1}. **${article.title}**`,
-          `   By: ${article.by}`,
-        ];
-        
-        // if (article.descendants !== undefined) {
-        //   parts.push(`   Comments: ${article.descendants}`);
-        // }
-        
-        parts.push(`   HN Discussion: https://news.ycombinator.com/item?id=${article.id}`);
-        
-        if (article.text) {
-          // Truncate long text content
-          const truncated = article.text.length > 200 
-            ? article.text.substring(0, 200) + '...'
-            : article.text;
-          parts.push(`   Content: ${truncated}`);
-        }
-        
-        return parts.join('\n');
-      }).join('\n\n');
+      const article = validArticles[0];
+      const hnLink = `https://news.ycombinator.com/item?id=${article.id}`;
+
+      // Fetch top comments for the article
+      const comments = await this.fetchTopComments(article, 3);
+
+      // Format article for the prompt
+      const parts = [];
+
+      parts.push(`Title: ${article.title}`);
+      // parts.push(`By: ${article.by}`);
+      
+      if (article.text) {
+        // Truncate long text content
+        const truncated = article.text.length > 200 
+          ? article.text.substring(0, 200) + '...'
+          : article.text;
+        parts.push(`Content: ${truncated}`);
+      }
+
+      // Add top comments if available
+      if (comments.length > 0) {
+        parts.push(''); // Empty line for separation
+        parts.push('Top Comments:');
+        comments.forEach((comment, index) => {
+          const commentText = this.stripHtml(comment.text || '');
+          // Truncate long comments
+          const truncated = commentText.length > 300
+            ? commentText.substring(0, 300) + '...'
+            : commentText;
+          parts.push(`${index + 1}. [${comment.by}]: ${truncated}`);
+        });
+      }
+      
+      const articleSummary = parts.join('\n');
 
       const userPrompt = [
-        'Top HackerNews Articles',
+        articleSummary,
         '',
-        articleSummaries,
-        '',
-        'I haven\'t read these articles yet, so brief just 1 interesting article to me. Tell me what article you are talking about and give me the link to the discussion. Be concise and witty.'
+        'Give me some insights or interesting thoughts about this article and the discussion happening in the comments. Assume I haven\'t read it yet. Be concise and witty.'
       ].join('\n');
 
       return {
         userPrompt,
-        includeContext: false
+        includeContext: false,
+        text: `\n\n**${article.title}**\nHN Discussion: ${hnLink}` + 
+              (comments.length > 0 ? ` (${comments.length} comment${comments.length > 1 ? 's' : ''})` : '')
       };
     } catch (error) {
       console.error('HackerNewsPlugin error:', error);
