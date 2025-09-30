@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { ChatOpenAI, ChatOpenAIFields } from '@langchain/openai';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { MessageQueue } from './MessageQueue';
+import { PluginManager } from './plugins/PluginManager';
+import { CodeReviewPlugin } from './plugins/CodeReviewPlugin';
+import { AgentLoop } from './AgentLoop';
 
 export function activate(context: vscode.ExtensionContext) {
   const disposable = vscode.commands.registerCommand('ani-vscode.showPanel', () => {
@@ -105,6 +107,18 @@ export function activate(context: vscode.ExtensionContext) {
       panel.webview.postMessage({ type: 'caret', x: normX, y: normY, side });
     };
 
+    // Initialize plugin system
+    const messageQueue = new MessageQueue();
+    const pluginManager = new PluginManager();
+    
+    // Register plugins
+    const codeReviewPlugin = new CodeReviewPlugin();
+    pluginManager.register(codeReviewPlugin);
+    
+    // Initialize agent loop
+    const agentLoop = new AgentLoop(messageQueue, pluginManager);
+    agentLoop.setPanel(panel);
+    
     // Track last edited files (MRU) for context
     const lastEditedFiles: string[] = [];
     const touchFile = (uri: vscode.Uri | undefined) => {
@@ -115,212 +129,7 @@ export function activate(context: vscode.ExtensionContext) {
       lastEditedFiles.unshift(fsPath);
       // keep only last 5
       if (lastEditedFiles.length > 5) lastEditedFiles.length = 5;
-    };
-
-    // LLM single-flight state
-    let llmInFlight = false;
-    let roastDebounceTimer: NodeJS.Timeout | undefined;
-    let cooldownTimer: NodeJS.Timeout | undefined;
-    let lastLlmEndedAt: number | null = null;
-
-    // Chat history state (maintained while editing the same file)
-    let chatHistory: Array<SystemMessage | HumanMessage | AIMessage> = [];
-    let lastFilePath: string | null = null;
-    let lastAnchorLine: number | null = null;
-
-    const getRelativePath = (absPath: string) => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders || folders.length === 0) return absPath;
-      for (const folder of folders) {
-        const rel = path.relative(folder.uri.fsPath, absPath);
-        if (!rel.startsWith('..')) return rel || path.basename(absPath);
-      }
-      return path.basename(absPath);
-    };
-
-    const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
-
-    const getLinesAround = (doc: vscode.TextDocument, centerLine: number, radius: number) => {
-      const start = clamp(centerLine - radius, 0, doc.lineCount - 1);
-      const end = clamp(centerLine + radius, 0, doc.lineCount - 1);
-      const lines: string[] = [];
-      for (let i = start; i <= end; i++) {
-        lines.push(doc.lineAt(i).text);
-      }
-      return { start, end, text: lines.join('\n') };
-    };
-
-    const maybeRoast = () => {
-      if (roastDebounceTimer) clearTimeout(roastDebounceTimer);
-      // debounce slightly to avoid spamming on rapid cursor/keys
-      roastDebounceTimer = setTimeout(() => roastNow(), 500);
-    };
-
-    const roastNow = async () => {
-      if (llmInFlight) return;
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
-      // Ensure we have LLM settings
-      const cfg = vscode.workspace.getConfiguration('ani-vscode');
-      const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
-      const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
-      const systemPrompt = cfg.get<string>('llm.systemPrompt', 'You are a ruthless but witty code critic. Roast the code concisely with sharp, constructive jabs.');
-      const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
-      const now = Date.now();
-      if (lastLlmEndedAt !== null) {
-        const elapsedMs = now - lastLlmEndedAt;
-        const minMs = minIntervalSec * 1000;
-        if (elapsedMs < minMs) {
-          const delay = Math.max(0, minMs - elapsedMs);
-          if (cooldownTimer) clearTimeout(cooldownTimer);
-          cooldownTimer = setTimeout(() => {
-            cooldownTimer = undefined;
-            roastNow();
-          }, delay);
-          return;
-        }
-      }
-
-      try {
-        llmInFlight = true;
-        // Notify webview that LLM call has started
-        panel.webview.postMessage({ type: 'thinking', on: true });
-        const doc = editor.document;
-        const pos = editor.selection.active;
-        touchFile(doc.uri);
-
-        const context10 = getLinesAround(doc, pos.line, 10);
-        const context10LinesAbove = context10.start; // number of lines before the snippet
-        const context10LinesBelow = (doc.lineCount - 1) - context10.end; // number of lines after the snippet
-        const snippet2 = getLinesAround(doc, pos.line, 2);
-        // Determine if there is an error diagnostic on the focused line
-        const hasErrorAtFocusedLine = (() => {
-          try {
-            const diags = vscode.languages.getDiagnostics(doc.uri) || [];
-            return diags.some((d) =>
-              d?.severity === vscode.DiagnosticSeverity.Error &&
-              typeof d?.range?.start?.line === 'number' &&
-              typeof d?.range?.end?.line === 'number' &&
-              d.range.start.line <= pos.line && pos.line <= d.range.end.line
-            );
-          } catch {
-            return false;
-          }
-        })();
-        // Insert caret indicator into focused snippet display
-        const snippet2Display = (() => {
-          const lines = snippet2.text.split('\n');
-          const caretLineIndex = pos.line - (context10 ? context10.start : pos.line);
-          // Above we used context10.start by mistake; use snippet2 range for accuracy
-          const correctedCaretLineIndex = pos.line - snippet2.start;
-          const targetIndex = correctedCaretLineIndex;
-          if (hasErrorAtFocusedLine && targetIndex >= 0 && targetIndex < lines.length) {
-            const line = lines[targetIndex];
-            const insertAt = clamp(pos.character, 0, line.length);
-            lines[targetIndex] = line.slice(0, insertAt) + '...' + line.slice(insertAt);
-          }
-          return lines.join('\n');
-        })();
-
-        const language = doc.languageId;
-        const absPath = doc.uri.fsPath;
-        const filePath = getRelativePath(absPath);
-
-        // Reset chat history when switching to a different file
-        if (lastFilePath !== absPath) {
-          chatHistory = [];
-          lastFilePath = absPath;
-          lastAnchorLine = pos.line; // establish new anchor at current line
-        }
-
-        // Ensure system prompt is present at the start of history
-        if (chatHistory.length === 0 || !(chatHistory[0] instanceof SystemMessage)) {
-          chatHistory.unshift(new SystemMessage(systemPrompt));
-        }
-
-        // Decide whether to include a wider context
-        let includeContext10 = false;
-        if (lastAnchorLine == null) {
-          includeContext10 = true;
-          lastAnchorLine = pos.line;
-        } else if (Math.abs(pos.line - lastAnchorLine) > 10) {
-          includeContext10 = true;
-          lastAnchorLine = pos.line; // move anchor when we re-add context
-        }
-
-        const ellipsisNote = hasErrorAtFocusedLine
-          ? 'Important: The ellipsis is only added for you to know the position of the caret and not a part of the code'
-          : '';
-
-        const instructionWithNote = (baseInstruction: string) =>
-          ellipsisNote ? `${ellipsisNote}\n\n${baseInstruction}` : baseInstruction;
-
-        const userPrompt = includeContext10
-          ? [
-              `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
-              '',
-              'Context:',
-              ...(context10LinesAbove > 0 ? [`(${context10LinesAbove} lines above)`] : []),
-              '```',
-              context10.text,
-              '```',
-              ...(context10LinesBelow > 0 ? [`(${context10LinesBelow} lines below)`] : []),
-              '',
-              'Focused snippet:',
-              '```',
-              snippet2Display,
-              '```',
-              '',
-              instructionWithNote('Roast the code above. Be concise, witty, and constructive.')
-            ].join('\n')
-          : [
-              `File: ${filePath}  |  Language: ${language}  |  Line: ${pos.line + 1}`,
-              'Snippet:',
-              '```',
-              snippet2Display,
-              '```',
-              instructionWithNote('Continue roasting based on prior context. Be concise and witty.')
-            ].join('\n');
-
-        const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
-        const llmFields: ChatOpenAIFields = {
-          model,
-          configuration: { baseURL: baseUrl },
-        };
-        if (apiKey) {
-          llmFields.apiKey = apiKey;
-        }
-        const llm = new ChatOpenAI(llmFields);
-
-        const historyToSend = [...chatHistory, new HumanMessage(userPrompt)];
-        const aiMsg = await llm.invoke(historyToSend);
-
-        const text = typeof aiMsg.content === 'string'
-          ? aiMsg.content
-          : Array.isArray(aiMsg.content)
-            ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
-            : String(aiMsg.content ?? '');
-
-        // Update chat history and prune if needed
-        chatHistory.push(new HumanMessage(userPrompt));
-        chatHistory.push(new AIMessage(text));
-        const MAX_HISTORY = 20; // includes system message
-        if (chatHistory.length > MAX_HISTORY) {
-          const system = chatHistory[0] instanceof SystemMessage ? [chatHistory[0]] : [];
-          const tail = chatHistory.slice(-1 * (MAX_HISTORY - system.length));
-          chatHistory = [...system, ...tail];
-        }
-
-        panel.webview.postMessage({ type: 'speech', text });
-      } catch (err: any) {
-        const msg = err?.message || String(err);
-        panel.webview.postMessage({ type: 'speech', text: `LLM error: ${msg}` });
-      } finally {
-        llmInFlight = false;
-        lastLlmEndedAt = Date.now();
-        // Notify webview that LLM call has ended
-        panel.webview.postMessage({ type: 'thinking', on: false });
-      }
+      agentLoop.setLastEditedFiles(lastEditedFiles);
     };
 
     const selectionListener = vscode.window.onDidChangeTextEditorSelection((e) => {
@@ -328,7 +137,7 @@ export function activate(context: vscode.ExtensionContext) {
       touchFile(e.textEditor?.document?.uri);
       // Only trigger when the editor is focused
       if (vscode.window.activeTextEditor?.document === e.textEditor.document) {
-        maybeRoast();
+        agentLoop.trigger();
       }
     });
     const focusListener = vscode.window.onDidChangeActiveTextEditor((ed) => {
@@ -336,20 +145,16 @@ export function activate(context: vscode.ExtensionContext) {
       touchFile(ed?.document?.uri);
       // Clear chat history when switching to a different file
       if (ed && ed.document) {
-        const fsPath = ed.document.uri.fsPath;
-        if (lastFilePath !== null && lastFilePath !== fsPath) {
-          chatHistory = [];
-          lastAnchorLine = null;
-        }
-        lastFilePath = fsPath;
-        maybeRoast();
+        agentLoop.resetChatHistory();
+        codeReviewPlugin.resetAnchor();
+        agentLoop.trigger();
       }
     });
     const keysListener = vscode.workspace.onDidChangeTextDocument((ev) => {
       postCaret();
       touchFile(ev.document.uri);
       if (vscode.window.activeTextEditor?.document === ev.document) {
-        maybeRoast();
+        agentLoop.trigger();
       }
     });
 

@@ -61,6 +61,11 @@
           "default": 10,
           "minimum": 10,
           "description": "Minimum seconds between LLM requests. Enforced minimum is 10 seconds."
+        },
+        "ani-vscode.plugins.codeReview.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Code Review plugin that analyzes and roasts your code."
         }
       }
     }
