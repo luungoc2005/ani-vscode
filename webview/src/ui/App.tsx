@@ -52,7 +52,7 @@ export function App() {
       if (data.type === 'caret' && typeof data.x === 'number' && typeof data.y === 'number') {
         mode = 'caret';
         let nx = data.x;
-        const edgeBlend = 0.2; // 0..1 range width near the edge
+        const edgeBlend = 0.5; // 0..1 range width near the edge (increased for stronger following)
         if (data.side === 'left') {
           nx = Math.max(0, Math.min(edgeBlend, data.x * edgeBlend));
         } else if (data.side === 'right') {
