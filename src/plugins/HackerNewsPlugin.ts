@@ -129,7 +129,7 @@ export class HackerNewsPlugin implements IPlugin {
         '',
         articleSummaries,
         '',
-        'I haven\'t read these articles yet, so brief anything interesting to me. Tell me what article you are talking about and give me the link to the discussion. Be concise and witty.'
+        'I haven\'t read these articles yet, so brief just 1 interesting article to me. Tell me what article you are talking about and give me the link to the discussion. Be concise and witty.'
       ].join('\n');
 
       return {
