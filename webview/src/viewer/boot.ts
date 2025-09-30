@@ -21,6 +21,47 @@ export function bootCubism(container: HTMLElement) {
   app.initialize({ canvasOverride: canvas });
   app.run();
 
+  // Expose global API for debug panel
+  (window as any).getAvailableMotions = () => {
+    try {
+      const delegate = LAppDelegate.getInstance();
+      console.log('getAvailableMotions - delegate:', delegate);
+      
+      // Access the first subdelegate's Live2DManager
+      if ((delegate as any)._subdelegates && (delegate as any)._subdelegates.getSize() > 0) {
+        const subdelegate = (delegate as any)._subdelegates.at(0);
+        console.log('getAvailableMotions - subdelegate:', subdelegate);
+        
+        const manager = subdelegate.getLive2DManager();
+        console.log('getAvailableMotions - manager:', manager);
+        
+        const result = manager.getAvailableMotions();
+        console.log('getAvailableMotions - result:', result);
+        return result;
+      } else {
+        console.warn('getAvailableMotions - No subdelegates available');
+      }
+    } catch (e) {
+      console.error('Error getting available motions:', e);
+    }
+    return { motions: [], modelName: '' };
+  };
+
+  (window as any).playMotion = (group: string, index: number) => {
+    try {
+      console.log('playMotion called:', group, index);
+      const delegate = LAppDelegate.getInstance();
+      if ((delegate as any)._subdelegates && (delegate as any)._subdelegates.getSize() > 0) {
+        const subdelegate = (delegate as any)._subdelegates.at(0);
+        const manager = subdelegate.getLive2DManager();
+        manager.playMotion(group, index);
+        console.log('playMotion - Motion started successfully');
+      }
+    } catch (e) {
+      console.error('Error playing motion:', e);
+    }
+  };
+
   return () => LAppDelegate.releaseInstance();
 }
 

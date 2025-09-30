@@ -40,6 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
     const cfg = vscode.workspace.getConfiguration('ani-vscode');
     const transparentBackground = cfg.get<boolean>('transparentBackground', true);
     const character = cfg.get<string>('character', 'Hiyori');
+    const debugPanel = cfg.get<boolean>('debugPanel', false);
 
     // Rewrite asset paths for VSCode webview
     const asWebviewUri = (p: string) => panel.webview.asWebviewUri(vscode.Uri.file(p)).toString();
@@ -66,13 +67,15 @@ export function activate(context: vscode.ExtensionContext) {
       html = html.replace(/<body(.*?)>/i, '<body$1 data-transparent-background="false">');
     }
 
-    // Inject selected character
+    // Inject selected character and debug panel setting
     html = html.replace(
       /<body(.*?)>/i,
       (_m: string, attrs: string) => {
         // Avoid duplicating attributes by merging attrs
         const hasDataChar = /data-character=/i.test(attrs);
-        const mergedAttrs = hasDataChar ? attrs : `${attrs} data-character="${character}"`;
+        const hasDataDebug = /data-debug-panel=/i.test(attrs);
+        let mergedAttrs = hasDataChar ? attrs : `${attrs} data-character="${character}"`;
+        mergedAttrs = hasDataDebug ? mergedAttrs : `${mergedAttrs} data-debug-panel="${debugPanel}"`;
         return `<body${mergedAttrs}>`;
       }
     );
@@ -196,6 +199,10 @@ export function activate(context: vscode.ExtensionContext) {
     const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('ani-vscode.plugins.periodicIntervalMinutes')) {
         setupPeriodicTrigger();
+      }
+      if (e.affectsConfiguration('ani-vscode.debugPanel')) {
+        const newDebugPanel = vscode.workspace.getConfiguration('ani-vscode').get<boolean>('debugPanel', false);
+        panel.webview.postMessage({ type: 'setDebugPanel', visible: newDebugPanel });
       }
     });
 

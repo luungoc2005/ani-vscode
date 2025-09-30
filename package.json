@@ -77,6 +77,11 @@
           "default": 2,
           "minimum": 0.5,
           "description": "How often (in minutes) a random plugin should automatically trigger. Set to 0 to disable periodic triggers."
+        },
+        "ani-vscode.debugPanel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the motion debug panel on the left side of the webview. This panel allows you to manually trigger model motions for testing."
         }
       }
     }

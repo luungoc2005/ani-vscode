@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SpeechBubble } from '../components/SpeechBubble';
 import { ThinkingDots } from '../components/ThinkingDots';
+import { DebugPanel } from '../components/DebugPanel';
 import { bootCubism } from '../viewer/boot';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { ModelSwitchButton } from '../components/ModelSwitchButton';
@@ -19,6 +20,7 @@ export function App() {
   const [speechText, setSpeechText] = useState('');
   const [speechOptions, setSpeechOptions] = useState<{ durationMs?: number; speedMsPerChar?: number } | undefined>(undefined);
   const [isThinking, setIsThinking] = useState(false);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   const copyTextToClipboard = async (_text: string) => {};
 
@@ -46,6 +48,10 @@ export function App() {
     const startThinking = () => setIsThinking(true);
     const stopThinking = () => setIsThinking(false);
 
+    // Read debug panel setting from data attribute
+    const debugPanelEnabled = document.body?.getAttribute('data-debug-panel') === 'true';
+    setShowDebugPanel(debugPanelEnabled);
+
     const onMessage = (ev: MessageEvent) => {
       const data = ev?.data as any;
       if (!data || typeof data !== 'object') return;
@@ -72,6 +78,10 @@ export function App() {
       } else if (data.type === 'thinking' && typeof data.on === 'boolean') {
         if (data.on) startThinking();
         else stopThinking();
+      } else if (data.type === 'toggleDebugPanel') {
+        setShowDebugPanel((prev) => !prev);
+      } else if (data.type === 'setDebugPanel' && typeof data.visible === 'boolean') {
+        setShowDebugPanel(data.visible);
       }
     };
 
@@ -109,6 +119,7 @@ export function App() {
         />
       )}
       <ModelSwitchButton />
+      <DebugPanel visible={showDebugPanel} />
     </div>
   );
 }

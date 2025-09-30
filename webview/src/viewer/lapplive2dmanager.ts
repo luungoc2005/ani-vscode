@@ -110,6 +110,37 @@ export class LAppLive2DManager {
   }
 
   /**
+   * Get all available motions from the current model.
+   */
+  public getAvailableMotions(): { motions: Array<{ group: string; index: number; fileName: string }>; modelName: string } {
+    if (this._models.getSize() === 0) {
+      return { motions: [], modelName: '' };
+    }
+    const model = this._models.at(0);
+    return {
+      motions: model.getAvailableMotions(),
+      modelName: model.getModelName(),
+    };
+  }
+
+  /**
+   * Play a specific motion by group and index.
+   */
+  public playMotion(group: string, index: number): void {
+    if (this._models.getSize() === 0) {
+      return;
+    }
+    const model = this._models.at(0);
+    model.startMotion(
+      group,
+      index,
+      LAppDefine.PriorityForce,
+      this.finishedMotion,
+      this.beganMotion
+    );
+  }
+
+  /**
    * シーンを切り替える
    * サンプルアプリケーションではモデルセットの切り替えを行う。
    * @param index

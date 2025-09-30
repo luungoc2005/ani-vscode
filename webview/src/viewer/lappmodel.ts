@@ -864,6 +864,60 @@ export class LAppModel extends CubismUserModel {
   }
 
   /**
+   * Get all available motion groups and their motions for debugging.
+   * @returns Array of motion information with group, index, and file name
+   */
+  public getAvailableMotions(): Array<{ group: string; index: number; fileName: string }> {
+    if (!this._modelSetting) {
+      console.log('LAppModel.getAvailableMotions - _modelSetting is null');
+      return [];
+    }
+
+    if (!this._initialized) {
+      console.log('LAppModel.getAvailableMotions - model not initialized yet');
+      return [];
+    }
+
+    const result: Array<{ group: string; index: number; fileName: string }> = [];
+    
+    try {
+      const motionGroupCount = this._modelSetting.getMotionGroupCount();
+      console.log('LAppModel.getAvailableMotions - motionGroupCount:', motionGroupCount);
+
+      for (let i = 0; i < motionGroupCount; i++) {
+        const groupName = this._modelSetting.getMotionGroupName(i);
+        const motionCount = this._modelSetting.getMotionCount(groupName);
+        console.log(`LAppModel.getAvailableMotions - group ${groupName} has ${motionCount} motions`);
+
+        for (let j = 0; j < motionCount; j++) {
+          const fileName = this._modelSetting.getMotionFileName(groupName, j);
+          result.push({
+            group: groupName,
+            index: j,
+            fileName: fileName.split('/').pop() || fileName, // Get just the filename
+          });
+        }
+      }
+    } catch (error) {
+      console.error('LAppModel.getAvailableMotions - Error:', error);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get the model's directory name
+   */
+  public getModelName(): string {
+    if (!this._modelHomeDir) {
+      return '';
+    }
+    // Extract model name from path like "Resources/Hiyori/" -> "Hiyori"
+    const parts = this._modelHomeDir.split('/').filter(p => p.length > 0);
+    return parts[parts.length - 1] || '';
+  }
+
+  /**
    * モデルを描画する処理。モデルを描画する空間のView-Projection行列を渡す。
    */
   public doDraw(): void {
