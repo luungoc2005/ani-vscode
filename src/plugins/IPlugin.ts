@@ -13,7 +13,7 @@ export interface PluginMessage {
  * Context passed to plugins when generating messages
  */
 export interface PluginContext {
-  editor: vscode.TextEditor;
+  editor: vscode.TextEditor | undefined;
   panel: vscode.WebviewPanel;
   lastEditedFiles: string[];
   chatHistory: any[];

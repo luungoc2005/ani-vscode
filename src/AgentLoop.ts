@@ -47,10 +47,9 @@ export class AgentLoop {
     let editor = vscode.window.activeTextEditor;
     if (!editor) {
       const visibleEditors = vscode.window.visibleTextEditors;
-      if (visibleEditors.length === 0) {
-        return;
+      if (visibleEditors.length > 0) {
+        editor = visibleEditors[0];
       }
-      editor = visibleEditors[0];
     }
 
     // Ensure we have LLM settings
@@ -90,13 +89,14 @@ export class AgentLoop {
         panel.webview.postMessage({ type: 'thinking', on: true });
       }
 
-      const doc = editor.document;
-      const absPath = doc.uri.fsPath;
-
       // Reset chat history when switching to a different file
-      if (this.lastFilePath !== absPath) {
-        this.chatHistory = [];
-        this.lastFilePath = absPath;
+      if (editor) {
+        const doc = editor.document;
+        const absPath = doc.uri.fsPath;
+        if (this.lastFilePath !== absPath) {
+          this.chatHistory = [];
+          this.lastFilePath = absPath;
+        }
       }
 
       // Ensure system prompt is present at the start of history
@@ -210,7 +210,7 @@ export class AgentLoop {
   /**
    * Create plugin context for the current state
    */
-  private createPluginContext(editor: vscode.TextEditor, panel: vscode.WebviewPanel): PluginContext {
+  private createPluginContext(editor: vscode.TextEditor | undefined, panel: vscode.WebviewPanel): PluginContext {
     const lastEditedFiles: string[] = (this as any).lastEditedFiles || [];
     
     const getRelativePath = (absPath: string) => {
@@ -398,16 +398,16 @@ Respond with ONLY the expression name, nothing else.`;
     let editor = vscode.window.activeTextEditor;
     if (!editor) {
       const visibleEditors = vscode.window.visibleTextEditors;
-      if (visibleEditors.length === 0) {
-        return;
+      if (visibleEditors.length > 0) {
+        editor = visibleEditors[0];
       }
-      editor = visibleEditors[0];
+      // Note: editor can be undefined, which is fine for plugins that don't need it
     }
 
     const cfg = vscode.workspace.getConfiguration('ani-vscode');
     const panel = (this as any).panel as vscode.WebviewPanel;
     
-    // Create context for shouldTrigger check
+    // Create context for shouldTrigger check (editor may be undefined)
     const context = this.createPluginContext(editor, panel);
     
     // Select a random plugin that should trigger in current context
