@@ -129,6 +129,8 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize agent loop
     const agentLoop = new AgentLoop(messageQueue, pluginManager);
     agentLoop.setPanel(panel);
+    agentLoop.setExtensionPath(context.extensionPath);
+    agentLoop.setCharacter(character);
     
     // Track last edited files (MRU) for context
     const lastEditedFiles: string[] = [];
@@ -210,11 +212,28 @@ export function activate(context: vscode.ExtensionContext) {
       }
     });
 
+    // Listen for messages from webview
+    const messageListener = panel.webview.onDidReceiveMessage((message) => {
+      if (message.type === 'characterChanged' && message.characterName) {
+        // Update agent loop's character
+        agentLoop.setCharacter(message.characterName);
+        
+        // Dismiss current speech bubble
+        panel.webview.postMessage({ type: 'dismissSpeech' });
+        
+        // Trigger a random plugin to showcase the new character
+        setTimeout(() => {
+          agentLoop.triggerRandomPlugin();
+        }, 500);
+      }
+    });
+
     panel.onDidDispose(() => {
       selectionListener.dispose();
       focusListener.dispose();
       keysListener.dispose();
       configListener.dispose();
+      messageListener.dispose();
       if (periodicTimer) {
         clearInterval(periodicTimer);
       }

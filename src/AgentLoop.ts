@@ -4,6 +4,7 @@ import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages
 import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
 import { PluginContext } from './plugins/IPlugin';
+import { getCharacterSystemPrompt } from './CharacterLoader';
 import motionsMap from './motions_map.json';
 
 /**
@@ -18,10 +19,34 @@ export class AgentLoop {
   private lastLlmEndedAt: number | null = null;
   private chatHistory: Array<SystemMessage | HumanMessage | AIMessage> = [];
   private lastFilePath: string | null = null;
+  private currentCharacter: string = 'Mao';
+  private extensionPath: string = '';
 
   constructor(messageQueue: MessageQueue, pluginManager: PluginManager) {
     this.messageQueue = messageQueue;
     this.pluginManager = pluginManager;
+  }
+
+  /**
+   * Set the extension path for loading character cards
+   */
+  setExtensionPath(path: string): void {
+    this.extensionPath = path;
+  }
+
+  /**
+   * Set the current character and reset chat history
+   */
+  setCharacter(characterName: string): void {
+    this.currentCharacter = characterName;
+    this.resetChatHistory();
+  }
+
+  /**
+   * Get the current character name
+   */
+  getCurrentCharacter(): string {
+    return this.currentCharacter;
   }
 
   /**
@@ -56,7 +81,8 @@ export class AgentLoop {
     const cfg = vscode.workspace.getConfiguration('ani-vscode');
     const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
     const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
-    const systemPrompt = cfg.get<string>('llm.systemPrompt', 'You are a ruthless but witty code critic. Roast the code concisely with sharp, constructive jabs.');
+    const fallbackPrompt = 'You are a helpful AI assistant. Reply in a friendly and concise manner.';
+    const systemPrompt = getCharacterSystemPrompt(this.currentCharacter, this.extensionPath, fallbackPrompt);
     const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
     const maxHistory = Math.max(1, cfg.get<number>('llm.maxHistory', 5));
 
@@ -151,6 +177,7 @@ export class AgentLoop {
           ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
           : String(aiMsg.content ?? '');
       text = this.stripCodeBlockTags(text);
+      text = this.stripThinkTags(text);
 
       // Update chat history and prune if needed
       this.chatHistory.push(new HumanMessage(userPrompt));
@@ -269,6 +296,12 @@ export class AgentLoop {
     }
     
     return text;
+  };
+
+  // Utility function to remove <think> tags and their content
+  private stripThinkTags(text: string): string {
+    // Remove all <think>...</think> blocks (including multiline)
+    return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   };
 
   /**

@@ -19,6 +19,7 @@ export function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [speechText, setSpeechText] = useState('');
   const [speechOptions, setSpeechOptions] = useState<{ durationMs?: number; speedMsPerChar?: number } | undefined>(undefined);
+  const [dismissSpeech, setDismissSpeech] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
@@ -40,6 +41,7 @@ export function App() {
     ) => {
       setSpeechText(text);
       setSpeechOptions(options);
+      setDismissSpeech(false);
     };
 
     // Expose global function for programmatic control
@@ -75,6 +77,8 @@ export function App() {
         }, 1500);
       } else if (data.type === 'speech' && typeof data.text === 'string') {
         showSpeech(data.text, data.options);
+      } else if (data.type === 'dismissSpeech') {
+        setDismissSpeech(true);
       } else if (data.type === 'thinking' && typeof data.on === 'boolean') {
         if (data.on) startThinking();
         else stopThinking();
@@ -136,7 +140,11 @@ export function App() {
         <SpeechBubble
           text={speechText}
           options={speechOptions}
-          onHidden={() => setSpeechText('')}
+          dismiss={dismissSpeech}
+          onHidden={() => {
+            setSpeechText('');
+            setDismissSpeech(false);
+          }}
         />
       )}
       <ModelSwitchButton />

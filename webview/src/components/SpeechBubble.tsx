@@ -6,10 +6,11 @@ type SpeechOptions = { durationMs?: number; speedMsPerChar?: number };
 export function SpeechBubble(props: {
   text: string;
   options?: SpeechOptions;
+  dismiss?: boolean;
   onCopied?: (text: string) => void;
   onHidden?: () => void;
 }) {
-  const { text, options, onCopied, onHidden } = props;
+  const { text, options, dismiss, onCopied, onHidden } = props;
   const [displayText, setDisplayText] = useState('');
   const [isVisible, setIsVisible] = useState(false);
   const [opacity, setOpacity] = useState(0);
@@ -70,6 +71,18 @@ export function SpeechBubble(props: {
       if (fadeTimerRef.current != null) window.clearTimeout(fadeTimerRef.current);
     };
   }, [text, options?.durationMs, options?.speedMsPerChar]);
+
+  // Handle dismiss prop
+  useEffect(() => {
+    if (dismiss) {
+      // Clear any ongoing timers
+      if (typingTimerRef.current != null) window.clearInterval(typingTimerRef.current);
+      if (fadeTimerRef.current != null) window.clearTimeout(fadeTimerRef.current);
+      
+      // Immediately fade out
+      setOpacity(0);
+    }
+  }, [dismiss]);
 
   const copyTextToClipboard = async (value: string) => {
     try {
