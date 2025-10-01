@@ -3,7 +3,6 @@ import * as path from 'path';
 
 export interface CharacterCard {
   name: string;
-  modelName: string;
   systemPrompt: string;
 }
 
@@ -53,7 +52,6 @@ export function loadCharacterCard(characterName: string, extensionPath: string):
     
     return {
       name: frontmatter.name || characterName,
-      modelName: frontmatter.modelName || characterName,
       systemPrompt: body,
     };
   } catch (error) {
