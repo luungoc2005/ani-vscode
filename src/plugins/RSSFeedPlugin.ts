@@ -232,7 +232,7 @@ export class RSSFeedPlugin implements IPlugin {
       return {
         userPrompt,
         includeContext: false,
-        text: `\n\n**${item.title}**\nRead more: ${item.link}`
+        text: `\n\n**${item.title}**\n[Read more](${item.link})`
       };
     } catch (error) {
       console.error('RSSFeedPlugin error:', error);

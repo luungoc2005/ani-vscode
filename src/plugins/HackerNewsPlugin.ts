@@ -209,13 +209,13 @@ export class HackerNewsPlugin implements IPlugin {
       const userPrompt = [
         articleSummary,
         '',
-        'Give me some insights or interesting thoughts about this article and the discussion happening in the comments. Assume I haven\'t read it yet. Be concise and witty.'
+        'Give me some insights or interesting thoughts about this article and the discussion happening in the comments. Be concise and witty.'
       ].join('\n');
 
       return {
         userPrompt,
         includeContext: false,
-        text: `\n\n**${article.title}**\nHN Discussion: ${hnLink}` + 
+        text: `\n\n**${article.title}**\n[HN Discussion](${hnLink})` + 
               (comments.length > 0 ? ` (${comments.length} comment${comments.length > 1 ? 's' : ''})` : '')
       };
     } catch (error) {

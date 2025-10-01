@@ -71,6 +71,12 @@ export class PluginManager {
     if (!plugin || !plugin.isEnabled(config)) {
       return null;
     }
+    
+    // Check if plugin should trigger in current context
+    if (plugin.shouldTrigger && !plugin.shouldTrigger(context)) {
+      return null;
+    }
+    
     return plugin.generateMessage(context);
   }
 
