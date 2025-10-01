@@ -216,7 +216,7 @@ export class HackerNewsPlugin implements IPlugin {
         userPrompt,
         includeContext: false,
         text: `\n\n**${article.title}**\n[HN Discussion](${hnLink})` + 
-              (comments.length > 0 ? ` (${comments.length} comment${comments.length > 1 ? 's' : ''})` : '')
+              (article.descendants ? ` (${article.descendants} comment${article.descendants > 1 ? 's' : ''})` : '')
       };
     } catch (error) {
       console.error('HackerNewsPlugin error:', error);
