@@ -69,6 +69,9 @@
 				},
 				{
 					"File": "motions/special_03.motion3.json"
+				},
+				{
+					"File": "motions/angry_01.motion3.json"
 				}
 			]
 		}

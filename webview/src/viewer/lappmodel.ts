@@ -869,12 +869,12 @@ export class LAppModel extends CubismUserModel {
    */
   public getAvailableMotions(): Array<{ group: string; index: number; fileName: string }> {
     if (!this._modelSetting) {
-      console.log('LAppModel.getAvailableMotions - _modelSetting is null');
+      // console.log('LAppModel.getAvailableMotions - _modelSetting is null');
       return [];
     }
 
     if (!this._initialized) {
-      console.log('LAppModel.getAvailableMotions - model not initialized yet');
+      // console.log('LAppModel.getAvailableMotions - model not initialized yet');
       return [];
     }
 
@@ -882,12 +882,12 @@ export class LAppModel extends CubismUserModel {
     
     try {
       const motionGroupCount = this._modelSetting.getMotionGroupCount();
-      console.log('LAppModel.getAvailableMotions - motionGroupCount:', motionGroupCount);
+      // console.log('LAppModel.getAvailableMotions - motionGroupCount:', motionGroupCount);
 
       for (let i = 0; i < motionGroupCount; i++) {
         const groupName = this._modelSetting.getMotionGroupName(i);
         const motionCount = this._modelSetting.getMotionCount(groupName);
-        console.log(`LAppModel.getAvailableMotions - group ${groupName} has ${motionCount} motions`);
+        // console.log(`LAppModel.getAvailableMotions - group ${groupName} has ${motionCount} motions`);
 
         for (let j = 0; j < motionCount; j++) {
           const fileName = this._modelSetting.getMotionFileName(groupName, j);

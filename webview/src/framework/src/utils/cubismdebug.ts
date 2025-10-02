@@ -54,6 +54,8 @@ if (CSM_LOG_LEVEL <= CSM_LOG_LEVEL_VERBOSE) {
     CubismLogPrintIn(LogLevel.LogLevel_Error, '[E]' + fmt, args);
   };
 } else if (CSM_LOG_LEVEL == CSM_LOG_LEVEL_DEBUG) {
+  CubismLogVerbose = () => {};
+  
   CubismLogDebug = (fmt: string, ...args: any[]) => {
     CubismLogPrintIn(LogLevel.LogLevel_Debug, '[D]' + fmt, args);
   };
@@ -70,6 +72,9 @@ if (CSM_LOG_LEVEL <= CSM_LOG_LEVEL_VERBOSE) {
     CubismLogPrintIn(LogLevel.LogLevel_Error, '[E]' + fmt, args);
   };
 } else if (CSM_LOG_LEVEL == CSM_LOG_LEVEL_INFO) {
+  CubismLogVerbose = () => {};
+  CubismLogDebug = () => {};
+  
   CubismLogInfo = (fmt: string, ...args: any[]) => {
     CubismLogPrintIn(LogLevel.LogLevel_Info, '[I]' + fmt, args);
   };
@@ -82,6 +87,10 @@ if (CSM_LOG_LEVEL <= CSM_LOG_LEVEL_VERBOSE) {
     CubismLogPrintIn(LogLevel.LogLevel_Error, '[E]' + fmt, args);
   };
 } else if (CSM_LOG_LEVEL == CSM_LOG_LEVEL_WARNING) {
+  CubismLogVerbose = () => {};
+  CubismLogDebug = () => {};
+  CubismLogInfo = () => {};
+  
   CubismLogWarning = (fmt: string, ...args: any[]) => {
     CubismLogPrintIn(LogLevel.LogLevel_Warning, '[W]' + fmt, args);
   };
@@ -90,9 +99,21 @@ if (CSM_LOG_LEVEL <= CSM_LOG_LEVEL_VERBOSE) {
     CubismLogPrintIn(LogLevel.LogLevel_Error, '[E]' + fmt, args);
   };
 } else if (CSM_LOG_LEVEL == CSM_LOG_LEVEL_ERROR) {
+  CubismLogVerbose = () => {};
+  CubismLogDebug = () => {};
+  CubismLogInfo = () => {};
+  CubismLogWarning = () => {};
+  
   CubismLogError = (fmt: string, ...args: any[]) => {
     CubismLogPrintIn(LogLevel.LogLevel_Error, '[E]' + fmt, args);
   };
+} else {
+  // CSM_LOG_LEVEL_OFF or any other value - all logs disabled
+  CubismLogVerbose = () => {};
+  CubismLogDebug = () => {};
+  CubismLogInfo = () => {};
+  CubismLogWarning = () => {};
+  CubismLogError = () => {};
 }
 
 /**

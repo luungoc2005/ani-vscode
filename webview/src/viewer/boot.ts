@@ -25,18 +25,18 @@ export function bootCubism(container: HTMLElement) {
   (window as any).getAvailableMotions = () => {
     try {
       const delegate = LAppDelegate.getInstance();
-      console.log('getAvailableMotions - delegate:', delegate);
+      // console.log('getAvailableMotions - delegate:', delegate);
       
       // Access the first subdelegate's Live2DManager
       if ((delegate as any)._subdelegates && (delegate as any)._subdelegates.getSize() > 0) {
         const subdelegate = (delegate as any)._subdelegates.at(0);
-        console.log('getAvailableMotions - subdelegate:', subdelegate);
+        // console.log('getAvailableMotions - subdelegate:', subdelegate);
         
         const manager = subdelegate.getLive2DManager();
-        console.log('getAvailableMotions - manager:', manager);
+        // console.log('getAvailableMotions - manager:', manager);
         
         const result = manager.getAvailableMotions();
-        console.log('getAvailableMotions - result:', result);
+        // console.log('getAvailableMotions - result:', result);
         return result;
       } else {
         console.warn('getAvailableMotions - No subdelegates available');

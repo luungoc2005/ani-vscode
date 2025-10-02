@@ -16,6 +16,7 @@
         "Thinking": "mtn_03.motion3.json",
         "Proud": "mtn_04.motion3.json",
         "Love": "special_01.motion3.json",
-        "Magic": "special_03.motion3.json"
+        "Magic": "special_03.motion3.json",
+        "Angry": "angry_01.motion3.json"
     }
 }

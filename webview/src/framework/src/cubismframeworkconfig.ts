@@ -29,4 +29,4 @@ export const CSM_LOG_LEVEL_OFF = 5;
  * 強制的にログ出力レベルを変える時に定義を有効にする。
  * CSM_LOG_LEVEL_VERBOSE ～ CSM_LOG_LEVEL_OFF を選択する。
  */
-export const CSM_LOG_LEVEL: number = CSM_LOG_LEVEL_VERBOSE;
+export const CSM_LOG_LEVEL: number = CSM_LOG_LEVEL_WARNING;
