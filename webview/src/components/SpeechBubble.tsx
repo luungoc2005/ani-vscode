@@ -52,9 +52,14 @@ export function SpeechBubble(props: {
     setIsVisible(true);
     setOpacity(1);
 
+    // Add multiple characters per update to reduce re-renders and improve performance
+    // Update every 16ms (60fps) but add multiple characters based on speedMsPerChar
+    const updateIntervalMs = 16; // ~60fps
+    const charsPerUpdate = Math.max(1, Math.floor(updateIntervalMs / speedMsPerChar));
+
     typingTimerRef.current = window.setInterval(() => {
       const target = targetTextRef.current;
-      const nextIndex = typingIndexRef.current + 1;
+      const nextIndex = Math.min(typingIndexRef.current + charsPerUpdate, target.length);
       typingIndexRef.current = nextIndex;
       setDisplayText(target.slice(0, nextIndex));
 
@@ -64,7 +69,7 @@ export function SpeechBubble(props: {
           setOpacity(0);
         }, durationMs);
       }
-    }, speedMsPerChar);
+    }, updateIntervalMs);
 
     return () => {
       if (typingTimerRef.current != null) window.clearInterval(typingTimerRef.current);
