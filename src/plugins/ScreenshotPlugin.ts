@@ -56,11 +56,6 @@ export class ScreenshotPlugin implements IPlugin {
       
       // Take a screenshot
       const screenshotPath = await this.takeScreenshot();
-      
-      if (!screenshotPath) {
-        vscode.window.showErrorMessage('Failed to capture screenshot');
-        return null;
-      }
 
       // Read the screenshot as base64
       const imageBuffer = fs.readFileSync(screenshotPath);
@@ -115,9 +110,10 @@ export class ScreenshotPlugin implements IPlugin {
           mimeType: 'image/png'
         })
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Screenshot plugin error:', error);
-      vscode.window.showErrorMessage(`Screenshot plugin failed: ${error}`);
+      const errorMessage = error.message || String(error);
+      vscode.window.showErrorMessage(`Failed to capture screenshot: ${errorMessage}`);
       return null;
     }
   }
@@ -125,8 +121,9 @@ export class ScreenshotPlugin implements IPlugin {
   /**
    * Take a screenshot using platform-specific commands
    * Returns the path to the screenshot file
+   * Throws an error with detailed information if screenshot fails
    */
-  private async takeScreenshot(): Promise<string | null> {
+  private async takeScreenshot(): Promise<string> {
     const tempDir = os.tmpdir();
     const timestamp = Date.now();
     const screenshotPath = path.join(tempDir, `vscode-screenshot-${timestamp}.png`);
@@ -155,14 +152,31 @@ export class ScreenshotPlugin implements IPlugin {
             $graphics.Dispose()
             $bmp.Dispose()
           `;
-          await execAsync(`powershell -command "${psScript}"`);
+          try {
+            await execAsync(`powershell -command "${psScript}"`);
+          } catch (psError: any) {
+            // Capture and log PowerShell errors with stderr output
+            console.error('PowerShell screenshot failed:');
+            console.error('Error message:', psError.message);
+            if (psError.stderr) {
+              console.error('PowerShell stderr:', psError.stderr);
+            }
+            if (psError.stdout) {
+              console.error('PowerShell stdout:', psError.stdout);
+            }
+            // Create a detailed error message for Windows
+            const errorDetails = psError.stderr ? `\n${psError.stderr}` : '';
+            throw new Error(`PowerShell screenshot failed: ${psError.message}${errorDetails}`);
+          }
           break;
 
         case 'linux':
           // Try various Linux screenshot tools (all non-interactive)
           try {
-            // Try gnome-screenshot first (non-interactive with -f flag)
-            await execAsync(`gnome-screenshot -f "${screenshotPath}"`);
+            // Try gnome-screenshot first
+            // --file: output file path
+            // (default without -w or -a flags captures full screen)
+            await execAsync(`gnome-screenshot --file="${screenshotPath}"`);
           } catch {
             try {
               // Try scrot (captures entire screen automatically)
@@ -172,29 +186,25 @@ export class ScreenshotPlugin implements IPlugin {
                 // Try import (ImageMagick) - captures root window (entire screen)
                 await execAsync(`import -window root "${screenshotPath}"`);
               } catch {
-                vscode.window.showErrorMessage(
-                  'No screenshot tool found. Please install gnome-screenshot, scrot, or ImageMagick.'
-                );
-                return null;
+                throw new Error('No screenshot tool found. Please install gnome-screenshot, scrot, or ImageMagick.');
               }
             }
           }
           break;
 
         default:
-          vscode.window.showErrorMessage(`Screenshot not supported on platform: ${platform}`);
-          return null;
+          throw new Error(`Screenshot not supported on platform: ${platform}`);
       }
 
       // Verify the file was created
       if (fs.existsSync(screenshotPath) && fs.statSync(screenshotPath).size > 0) {
         return screenshotPath;
       } else {
-        return null;
+        throw new Error('Screenshot file was not created or is empty');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to take screenshot:', error);
-      return null;
+      throw error; // Re-throw to be handled by caller
     }
   }
 

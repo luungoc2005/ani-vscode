@@ -151,7 +151,7 @@ export class AgentLoop {
         if (pluginId) {
           triggeringPlugin = this.pluginManager.getPlugin(pluginId);
         } else {
-          triggeringPlugin = this.pluginManager.selectRandomPlugin(cfg, context);
+          triggeringPlugin = await this.pluginManager.selectRandomPlugin(cfg, context);
         }
         
         if (!triggeringPlugin) {
@@ -494,7 +494,7 @@ Respond with ONLY the expression name, nothing else.`;
     const context = this.createPluginContext(editor, panel);
     
     // Select a random plugin that should trigger in current context
-    const plugin = this.pluginManager.selectRandomPlugin(cfg, context);
+    const plugin = await this.pluginManager.selectRandomPlugin(cfg, context);
     
     if (!plugin) {
       return;

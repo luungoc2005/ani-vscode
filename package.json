@@ -138,9 +138,12 @@
   },
   "scripts": {
     "compile": "tsc -p . && mkdir -p out/characters && cp src/characters/*.mdx out/characters/",
+    "compile:win": "tsc -p . && if not exist out\\characters (mkdir out\\characters) && copy src\\characters\\*.mdx out\\characters\\",
     "watch": "tsc -w -p .",
     "prepublish": "npm run build",
-    "build": "npm run compile && cd webview && npm install --no-audit --no-fund && npm run build",
+    "build": "node -e \"process.platform === 'win32' ? process.exit(0) : process.exit(1)\" && npm run build:win || npm run build:unix",
+    "build:unix": "npm run compile && cd webview && npm install --no-audit --no-fund && npm run build",
+    "build:win": "npm run compile:win && cd webview && npm install --no-audit --no-fund && npm run build",
     "postinstall": "cd webview && npm install --no-audit --no-fund && npm run build"
   },
   "devDependencies": {

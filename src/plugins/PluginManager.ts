@@ -51,18 +51,22 @@ export class PluginManager {
    * Randomly select an enabled plugin that should trigger in the current context
    * Uses weighted random selection based on plugin weights
    */
-  selectRandomPlugin(config: vscode.WorkspaceConfiguration, context?: PluginContext): IPlugin | null {
+  async selectRandomPlugin(config: vscode.WorkspaceConfiguration, context?: PluginContext): Promise<IPlugin | null> {
     let enabled = this.getEnabledPlugins(config);
     
     // Filter by shouldTrigger if context is provided
     if (context) {
-      enabled = enabled.filter(plugin => {
-        // If plugin doesn't implement shouldTrigger, assume it should trigger
-        if (!plugin.shouldTrigger) {
-          return true;
-        }
-        return plugin.shouldTrigger(context);
-      });
+      const shouldTriggerResults = await Promise.all(
+        enabled.map(async plugin => {
+          // If plugin doesn't implement shouldTrigger, assume it should trigger
+          if (!plugin.shouldTrigger) {
+            return true;
+          }
+          return await plugin.shouldTrigger(context);
+        })
+      );
+      
+      enabled = enabled.filter((_, index) => shouldTriggerResults[index]);
     }
     
     if (enabled.length === 0) {
@@ -95,7 +99,7 @@ export class PluginManager {
    * Get a message from a randomly selected plugin
    */
   async getRandomPluginMessage(context: PluginContext, config: vscode.WorkspaceConfiguration): Promise<PluginMessage | null> {
-    const plugin = this.selectRandomPlugin(config);
+    const plugin = await this.selectRandomPlugin(config, context);
     if (!plugin) {
       return null;
     }
@@ -112,7 +116,7 @@ export class PluginManager {
     }
     
     // Check if plugin should trigger in current context
-    if (plugin.shouldTrigger && !plugin.shouldTrigger(context)) {
+    if (plugin.shouldTrigger && !(await plugin.shouldTrigger(context))) {
       return null;
     }
     

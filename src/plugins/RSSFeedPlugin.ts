@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { IPlugin, PluginContext, PluginMessage } from './IPlugin';
 import * as https from 'https';
 import * as http from 'http';
+import { hasInternetConnectivityCached } from './common/connectivity';
 
 /**
  * RSS Feed Item Interface
@@ -31,9 +32,9 @@ export class RSSFeedPlugin implements IPlugin {
     return 1.0;
   }
 
-  shouldTrigger(context: PluginContext): boolean {
-    // RSS plugin can always trigger (doesn't depend on editor state)
-    return true;
+  async shouldTrigger(context: PluginContext): Promise<boolean> {
+    // RSS plugin requires internet connectivity
+    return await hasInternetConnectivityCached();
   }
 
   /**

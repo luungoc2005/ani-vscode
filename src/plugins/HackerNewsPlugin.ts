@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { IPlugin, PluginContext, PluginMessage } from './IPlugin';
 import * as https from 'https';
+import { hasInternetConnectivityCached } from './common/connectivity';
 
 /**
  * HackerNews Article Interface
@@ -44,9 +45,9 @@ export class HackerNewsPlugin implements IPlugin {
     return 1.0;
   }
 
-  shouldTrigger(context: PluginContext): boolean {
-    // HackerNews plugin can always trigger (doesn't depend on editor state)
-    return true;
+  async shouldTrigger(context: PluginContext): Promise<boolean> {
+    // HackerNews plugin requires internet connectivity
+    return await hasInternetConnectivityCached();
   }
 
   /**

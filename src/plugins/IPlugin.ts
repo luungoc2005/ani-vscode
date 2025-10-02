@@ -51,8 +51,9 @@ export interface IPlugin {
    * Whether this plugin should trigger in the current context
    * Used by the periodic trigger to filter out plugins that shouldn't run
    * Returns true by default if not implemented
+   * Can be async to perform checks like connectivity
    */
-  shouldTrigger?(context: PluginContext): boolean;
+  shouldTrigger?(context: PluginContext): boolean | Promise<boolean>;
 
   /**
    * Generate a message for the LLM based on current context
