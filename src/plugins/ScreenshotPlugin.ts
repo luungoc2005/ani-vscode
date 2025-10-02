@@ -130,6 +130,7 @@ export class ScreenshotPlugin implements IPlugin {
 
     try {
       const platform = os.platform();
+      let execResult: { stdout: string; stderr: string } | undefined;
 
       switch (platform) {
         case 'darwin': // macOS
@@ -137,35 +138,124 @@ export class ScreenshotPlugin implements IPlugin {
           // -x: no sound
           // -T 0: capture immediately (no delay)
           // Without -i flag, it captures the entire main screen non-interactively
-          await execAsync(`screencapture -x -T 0 "${screenshotPath}"`);
+          execResult = await execAsync(`screencapture -x -T 0 "${screenshotPath}"`);
           break;
 
         case 'win32': // Windows
-          // Use PowerShell to capture the primary screen automatically
+          // Use a temporary PowerShell script file for better reliability
+          // Avoids command-line escaping issues and allows better error capture
+          const tempScriptPath = path.join(tempDir, `screenshot-${timestamp}.ps1`);
           const psScript = `
-            Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $bmp = New-Object System.Drawing.Bitmap $bounds.width, $bounds.height
-            $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-            $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.size)
-            $bmp.Save('${screenshotPath.replace(/\\/g, '\\\\')}')
-            $graphics.Dispose()
-            $bmp.Dispose()
-          `;
+$ErrorActionPreference = "Stop"
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+try {
+    Write-Host "Starting screenshot capture..."
+    
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    
+    Write-Host "Assemblies loaded successfully"
+    
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen
+    $bounds = $screen.Bounds
+    
+    Write-Host "Screen bounds: $($bounds.Width)x$($bounds.Height) at $($bounds.Location)"
+    
+    if ($bounds.Width -le 0 -or $bounds.Height -le 0) {
+        throw "Invalid screen dimensions: $($bounds.Width)x$($bounds.Height)"
+    }
+    
+    $bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+    Write-Host "Bitmap created"
+    
+    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+    Write-Host "Graphics context created"
+    
+    Start-Sleep -Milliseconds 100
+    
+    $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+    Write-Host "Screen captured to bitmap"
+    
+    $outputPath = "${screenshotPath.replace(/\\/g, '\\\\')}"
+    $bmp.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    Write-Host "Bitmap saved to: $outputPath"
+    
+    if (-not (Test-Path $outputPath)) {
+        throw "Screenshot file was not created at: $outputPath"
+    }
+    
+    $fileSize = (Get-Item $outputPath).Length
+    Write-Host "File size: $fileSize bytes"
+    
+    if ($fileSize -eq 0) {
+        throw "Screenshot file is empty"
+    }
+    
+    $graphics.Dispose()
+    $bmp.Dispose()
+    
+    Write-Host "SUCCESS: Screenshot saved successfully"
+    exit 0
+    
+} catch {
+    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ERROR TYPE: $($_.Exception.GetType().FullName)" -ForegroundColor Red
+    Write-Host "STACK TRACE: $($_.ScriptStackTrace)" -ForegroundColor Red
+    exit 1
+}
+`;
+          
           try {
-            await execAsync(`powershell -command "${psScript}"`);
+            // Write script to temp file
+            fs.writeFileSync(tempScriptPath, psScript, 'utf8');
+            
+            // Execute the script file
+            execResult = await execAsync(`powershell -ExecutionPolicy Bypass -NoProfile -File "${tempScriptPath}"`, {
+              timeout: 15000, // 15 second timeout
+              windowsHide: true
+            });
+            
+            // Clean up script file
+            try {
+              fs.unlinkSync(tempScriptPath);
+            } catch (cleanupError) {
+              // Ignore cleanup errors
+            }
+            
           } catch (psError: any) {
+            // Clean up script file on error
+            try {
+              if (fs.existsSync(tempScriptPath)) {
+                fs.unlinkSync(tempScriptPath);
+              }
+            } catch (cleanupError) {
+              // Ignore cleanup errors
+            }
+            
             // Capture and log PowerShell errors with stderr output
             console.error('PowerShell screenshot failed:');
             console.error('Error message:', psError.message);
-            if (psError.stderr) {
-              console.error('PowerShell stderr:', psError.stderr);
-            }
+            console.error('Command:', psError.cmd || '(unknown)');
             if (psError.stdout) {
               console.error('PowerShell stdout:', psError.stdout);
+            } else {
+              console.error('PowerShell stdout: (empty)');
             }
+            if (psError.stderr) {
+              console.error('PowerShell stderr:', psError.stderr);
+            } else {
+              console.error('PowerShell stderr: (empty)');
+            }
+            
             // Create a detailed error message for Windows
-            const errorDetails = psError.stderr ? `\n${psError.stderr}` : '';
+            let errorDetails = '';
+            if (psError.stdout || psError.stderr) {
+              errorDetails = '\n' + (psError.stdout || '') + (psError.stderr || '');
+            } else {
+              errorDetails = '\nNo output captured. This might indicate PowerShell execution was blocked or timed out.';
+            }
+            
             throw new Error(`PowerShell screenshot failed: ${psError.message}${errorDetails}`);
           }
           break;
@@ -176,15 +266,15 @@ export class ScreenshotPlugin implements IPlugin {
             // Try gnome-screenshot first
             // --file: output file path
             // (default without -w or -a flags captures full screen)
-            await execAsync(`gnome-screenshot --file="${screenshotPath}"`);
+            execResult = await execAsync(`gnome-screenshot --file="${screenshotPath}"`);
           } catch {
             try {
               // Try scrot (captures entire screen automatically)
-              await execAsync(`scrot "${screenshotPath}"`);
+              execResult = await execAsync(`scrot "${screenshotPath}"`);
             } catch {
               try {
                 // Try import (ImageMagick) - captures root window (entire screen)
-                await execAsync(`import -window root "${screenshotPath}"`);
+                execResult = await execAsync(`import -window root "${screenshotPath}"`);
               } catch {
                 throw new Error('No screenshot tool found. Please install gnome-screenshot, scrot, or ImageMagick.');
               }
@@ -200,7 +290,13 @@ export class ScreenshotPlugin implements IPlugin {
       if (fs.existsSync(screenshotPath) && fs.statSync(screenshotPath).size > 0) {
         return screenshotPath;
       } else {
-        throw new Error('Screenshot file was not created or is empty');
+        // File wasn't created even though command didn't throw - include output for debugging
+        const debugInfo = execResult 
+          ? `\nstdout: ${execResult.stdout || '(empty)'}\nstderr: ${execResult.stderr || '(empty)'}`
+          : '';
+        console.error('Screenshot file was not created or is empty');
+        console.error('Command output:', debugInfo);
+        throw new Error(`Screenshot file was not created or is empty${debugInfo}`);
       }
     } catch (error: any) {
       console.error('Failed to take screenshot:', error);
