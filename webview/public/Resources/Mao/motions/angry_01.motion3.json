@@ -1,19 +1,63 @@
 {
 	"Version": 3,
 	"Meta": {
-		"Duration": 2.0,
+		"Duration": 1.5,
 		"Fps": 30.0,
-		"FadeInTime": 0.5,
-		"FadeOutTime": 0.5,
+		"FadeInTime": 0.3,
+		"FadeOutTime": 0.3,
 		"Loop": true,
 		"AreBeziersRestricted": true,
-		"CurveCount": 6,
-		"TotalSegmentCount": 6,
-		"TotalPointCount": 12,
+		"CurveCount": 14,
+		"TotalSegmentCount": 14,
+		"TotalPointCount": 28,
 		"UserDataCount": 0,
 		"TotalUserDataSize": 0
 	},
 	"Curves": [
+		{
+			"Target": "Parameter",
+			"Id": "ParamAngleX",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
+				4
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Id": "ParamAngleY",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
+				-15
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Id": "ParamAngleZ",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
+				5
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Id": "ParamBodyAngleX",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
+				-5
+			]
+		},
 		{
 			"Target": "Parameter",
 			"Id": "ParamBrowLAngle",
@@ -21,7 +65,7 @@
 				0,
 				0,
 				0,
-				2.0,
+				1.5,
 				-1
 			]
 		},
@@ -32,7 +76,29 @@
 				0,
 				0,
 				0,
-				2.0,
+				1.5,
+				-1
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Id": "ParamBrowLForm",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
+				-1
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Id": "ParamBrowRForm",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
 				-1
 			]
 		},
@@ -43,8 +109,19 @@
 				0,
 				0,
 				0,
-				2.0,
+				1.5,
 				1
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Id": "ParamMouthForm",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
+				-0.6
 			]
 		},
 		{
@@ -54,8 +131,8 @@
 				0,
 				1,
 				0,
-				2.0,
-				1.2
+				1.5,
+				1.4
 			]
 		},
 		{
@@ -65,19 +142,30 @@
 				0,
 				1,
 				0,
-				2.0,
-				1.2
+				1.5,
+				1.4
 			]
 		},
 		{
 			"Target": "Parameter",
-			"Id": "ParamAngleY",
+			"Id": "ParamArmLA",
 			"Segments": [
 				0,
 				0,
 				0,
-				2.0,
-				-10
+				1.5,
+				8
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Id": "ParamArmRA",
+			"Segments": [
+				0,
+				0,
+				0,
+				1.5,
+				-8
 			]
 		}
 	]
