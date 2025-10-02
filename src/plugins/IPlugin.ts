@@ -54,6 +54,12 @@ export interface IPlugin {
   generateMessage(context: PluginContext): Promise<PluginMessage | null>;
 
   /**
+   * Called after the LLM generates a response to this plugin's message
+   * Allows the plugin to store state for future invocations
+   */
+  onResponse?(response: string): void;
+
+  /**
    * Called when the plugin should activate (e.g., register event listeners)
    */
   activate?(context: PluginContext): void;

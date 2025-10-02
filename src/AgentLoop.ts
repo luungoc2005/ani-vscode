@@ -133,6 +133,7 @@ export class AgentLoop {
       let userPrompt: string;
       let appendText: string | undefined;
       let imageData: { image: string; mimeType: string } | undefined;
+      let triggeringPlugin: any = null; // Track which plugin generated this message
       
       // Check if there are user messages in the queue
       if (!this.messageQueue.isEmpty()) {
@@ -145,9 +146,19 @@ export class AgentLoop {
       } else {
         // Get message from specific plugin or randomly selected plugin
         const context = this.createPluginContext(editor, panel);
-        const pluginMessage = pluginId
-          ? await this.pluginManager.getPluginMessage(pluginId, context, cfg)
-          : await this.pluginManager.getRandomPluginMessage(context, cfg);
+        
+        // Get the plugin instance
+        if (pluginId) {
+          triggeringPlugin = this.pluginManager.getPlugin(pluginId);
+        } else {
+          triggeringPlugin = this.pluginManager.selectRandomPlugin(cfg, context);
+        }
+        
+        if (!triggeringPlugin) {
+          return;
+        }
+        
+        const pluginMessage = await triggeringPlugin.generateMessage(context);
         
         if (!pluginMessage) {
           // No plugin available or no message generated
@@ -212,6 +223,11 @@ export class AgentLoop {
           : String(aiMsg.content ?? '');
       text = this.stripCodeBlockTags(text);
       text = this.stripThinkTags(text);
+
+      // Notify the plugin of the AI response if it has an onResponse method
+      if (triggeringPlugin && typeof triggeringPlugin.onResponse === 'function') {
+        triggeringPlugin.onResponse(text);
+      }
 
       // Update chat history and prune if needed
       this.chatHistory.push(new HumanMessage(userPrompt));

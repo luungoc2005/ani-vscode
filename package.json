@@ -121,12 +121,16 @@
   },
   "devDependencies": {
     "@types/node": "^22.5.2",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.5.4"
   },
   "license": "SEE LICENSE IN LICENSE.md",
   "dependencies": {
     "@langchain/core": "^0.3.77",
-    "@langchain/openai": "^0.6.13"
+    "@langchain/openai": "^0.6.13",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0"
   }
 }
