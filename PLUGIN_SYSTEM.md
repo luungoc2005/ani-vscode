@@ -69,6 +69,43 @@ The CodeReview plugin contains the original code roasting functionality. It:
 "ani-vscode.plugins.codeReview.enabled": true
 ```
 
+### HackerNews Plugin (`src/plugins/HackerNewsPlugin.ts`)
+
+The HackerNews plugin fetches top stories from Hacker News and asks the AI to comment on them.
+
+**Configuration:**
+```json
+"ani-vscode.plugins.hackerNews.enabled": true
+```
+
+### RSS Feed Plugin (`src/plugins/RSSFeedPlugin.ts`)
+
+The RSS Feed plugin fetches articles from configured RSS feeds and asks the AI to summarize them.
+
+**Configuration:**
+```json
+"ani-vscode.plugins.rssFeed.enabled": true,
+"ani-vscode.plugins.rssFeed.feeds": [
+  "https://example.com/feed.xml"
+]
+```
+
+### Screenshot Plugin (`src/plugins/ScreenshotPlugin.ts`)
+
+The Screenshot plugin captures your workspace and asks a vision-capable AI to comment on it. It:
+- Captures screenshots using platform-native tools (macOS, Windows, Linux)
+- Sends screenshots to vision-capable models (e.g., GPT-4 Vision)
+- Provides witty commentary about code, workspace setup, and practices
+- Automatically throttles to prevent excessive captures
+
+**Requirements:**
+- Vision-capable AI model (e.g., `gpt-4o`, `gpt-4-vision-preview`)
+
+**Configuration:**
+```json
+"ani-vscode.plugins.screenshot.enabled": false
+```
+
 ## Creating a New Plugin
 
 To create a new plugin:
@@ -129,6 +166,9 @@ ani-vscode.plugins.<pluginId>.enabled
 
 Current plugins:
 - `ani-vscode.plugins.codeReview.enabled` (default: `true`)
+- `ani-vscode.plugins.hackerNews.enabled` (default: `true`)
+- `ani-vscode.plugins.rssFeed.enabled` (default: `true`)
+- `ani-vscode.plugins.screenshot.enabled` (default: `false`)
 
 ## User Message Queue
 

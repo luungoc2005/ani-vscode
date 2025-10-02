@@ -6,6 +6,7 @@ import { PluginManager } from './plugins/PluginManager';
 import { CodeReviewPlugin } from './plugins/CodeReviewPlugin';
 import { HackerNewsPlugin } from './plugins/HackerNewsPlugin';
 import { RSSFeedPlugin } from './plugins/RSSFeedPlugin';
+import { ScreenshotPlugin } from './plugins/ScreenshotPlugin';
 import { AgentLoop } from './AgentLoop';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -125,6 +126,9 @@ export function activate(context: vscode.ExtensionContext) {
     
     const rssFeedPlugin = new RSSFeedPlugin();
     pluginManager.register(rssFeedPlugin);
+    
+    const screenshotPlugin = new ScreenshotPlugin();
+    pluginManager.register(screenshotPlugin);
     
     // Initialize agent loop
     const agentLoop = new AgentLoop(messageQueue, pluginManager);

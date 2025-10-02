@@ -132,6 +132,7 @@ export class AgentLoop {
 
       let userPrompt: string;
       let appendText: string | undefined;
+      let imageData: { image: string; mimeType: string } | undefined;
       
       // Check if there are user messages in the queue
       if (!this.messageQueue.isEmpty()) {
@@ -155,6 +156,19 @@ export class AgentLoop {
         
         userPrompt = pluginMessage.userPrompt;
         appendText = pluginMessage.text;
+        
+        // Check if plugin message includes image data
+        if (appendText) {
+          try {
+            const parsed = JSON.parse(appendText);
+            if (parsed.image && parsed.mimeType) {
+              imageData = parsed;
+              appendText = undefined; // Don't append to display text
+            }
+          } catch {
+            // Not JSON, treat as regular append text
+          }
+        }
       }
 
       // Send to LLM
@@ -168,7 +182,27 @@ export class AgentLoop {
       }
       const llm = new ChatOpenAI(llmFields);
 
-      const historyToSend = [...this.chatHistory, new HumanMessage(userPrompt)];
+      // Create human message with optional image content
+      let humanMessage: HumanMessage;
+      if (imageData) {
+        // Multi-modal message with text and image
+        humanMessage = new HumanMessage({
+          content: [
+            { type: 'text', text: userPrompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${imageData.mimeType};base64,${imageData.image}`,
+              },
+            },
+          ],
+        });
+      } else {
+        // Text-only message
+        humanMessage = new HumanMessage(userPrompt);
+      }
+
+      const historyToSend = [...this.chatHistory, humanMessage];
       const aiMsg = await llm.invoke(historyToSend);
 
       let text = typeof aiMsg.content === 'string'
