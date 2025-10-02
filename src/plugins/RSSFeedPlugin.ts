@@ -26,6 +26,11 @@ export class RSSFeedPlugin implements IPlugin {
     return config.get<boolean>('plugins.rssFeed.enabled', true);
   }
 
+  getWeight(config: vscode.WorkspaceConfiguration): number {
+    // Default weight for RSS Feed plugin
+    return 1.0;
+  }
+
   shouldTrigger(context: PluginContext): boolean {
     // RSS plugin can always trigger (doesn't depend on editor state)
     return true;

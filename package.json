@@ -73,15 +73,33 @@
           "default": true,
           "description": "Enable the Code Review plugin that analyzes and roasts your code."
         },
+        "ani-vscode.plugins.codeReview.weight": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0,
+          "description": "Weight for Code Review plugin selection (higher = more likely to trigger). Default: 1.0"
+        },
         "ani-vscode.plugins.hackerNews.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable the HackerNews plugin that fetches top articles and asks the AI to comment."
         },
+        "ani-vscode.plugins.hackerNews.weight": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0,
+          "description": "Weight for HackerNews plugin selection (higher = more likely to trigger). Default: 1.0"
+        },
         "ani-vscode.plugins.rssFeed.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable the RSS Feed plugin that fetches articles from configured RSS feeds and asks the AI to summarize."
+        },
+        "ani-vscode.plugins.rssFeed.weight": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0,
+          "description": "Weight for RSS Feed plugin selection (higher = more likely to trigger). Default: 1.0"
         },
         "ani-vscode.plugins.rssFeed.feeds": {
           "type": "array",
@@ -97,6 +115,12 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the Screenshot plugin that captures your workspace and asks the AI to comment on it. Requires a vision-capable model (e.g., gpt-4o, gpt-4-vision-preview)."
+        },
+        "ani-vscode.plugins.screenshot.weight": {
+          "type": "number",
+          "default": 2.0,
+          "minimum": 0,
+          "description": "Weight for Screenshot plugin selection (higher = more likely to trigger). Default: 2.0"
         },
         "ani-vscode.plugins.periodicIntervalMinutes": {
           "type": "number",

@@ -26,6 +26,11 @@ export class ScreenshotPlugin implements IPlugin {
     return config.get<boolean>('plugins.screenshot.enabled', false);
   }
 
+  getWeight(config: vscode.WorkspaceConfiguration): number {
+    // Default weight for Screenshot plugin
+    return 2.0;
+  }
+
   shouldTrigger(context: PluginContext): boolean {
     const now = Date.now();
     const timeSinceLastScreenshot = now - this.lastScreenshotTime;

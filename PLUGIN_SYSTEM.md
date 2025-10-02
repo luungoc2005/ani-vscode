@@ -23,7 +23,7 @@ The extension has been refactored to use a modular plugin system that allows for
 3. **PluginManager** (`src/plugins/PluginManager.ts`)
    - Manages all registered plugins
    - Filters enabled plugins based on configuration
-   - Randomly selects plugins when needed
+   - Randomly selects plugins using weighted selection
    - Handles plugin activation and deactivation
 
 4. **IPlugin Interface** (`src/plugins/IPlugin.ts`)
@@ -31,6 +31,8 @@ The extension has been refactored to use a modular plugin system that allows for
    - Defines the contract for plugin behavior
    - Key methods:
      - `isEnabled()`: Check if plugin is enabled
+     - `getWeight()`: Get the default weight for plugin selection (optional)
+     - `shouldTrigger()`: Check if plugin should trigger in current context (optional)
      - `generateMessage()`: Generate a message for the LLM
      - `activate()` / `deactivate()`: Lifecycle hooks
 
@@ -54,6 +56,49 @@ Is user message queue empty?
           Send response to webview
 ```
 
+## Plugin Selection and Weights
+
+The PluginManager uses **weighted random selection** to determine which plugin triggers when the message queue is empty. Each plugin has a weight that determines how likely it is to be selected.
+
+### How Weights Work
+
+- Higher weight = more likely to trigger
+- Weights don't need to sum to 1.0 (they're relative to each other)
+- A plugin with weight 2.0 is twice as likely to trigger as a plugin with weight 1.0
+- Setting weight to 0 means the plugin will never be selected (but it's better to just disable it)
+
+### Configuring Weights
+
+Each plugin has a default weight defined in code, but you can override it in your VS Code settings:
+
+```json
+{
+  "ani-vscode.plugins.codeReview.weight": 3.0,     // Make code review 3x more likely than default
+  "ani-vscode.plugins.hackerNews.weight": 0.5,    // Make HN half as likely
+  "ani-vscode.plugins.rssFeed.weight": 1.0        // Keep RSS at default
+}
+```
+
+### Weight Examples
+
+**Scenario 1**: All plugins at default weights
+- CodeReview: 2.0 (40% chance)
+- HackerNews: 1.0 (20% chance)
+- RSSFeed: 1.0 (20% chance)
+- Screenshot: 0.5 (10% chance)
+- Other: 0.5 (10% chance)
+
+**Scenario 2**: Prefer code review heavily
+```json
+{
+  "ani-vscode.plugins.codeReview.weight": 10.0,
+  "ani-vscode.plugins.hackerNews.weight": 1.0
+}
+```
+- CodeReview: ~83% chance
+- HackerNews: ~8% chance
+- Others at defaults: ~9% total
+
 ## Built-in Plugins
 
 ### CodeReview Plugin (`src/plugins/CodeReviewPlugin.ts`)
@@ -66,7 +111,8 @@ The CodeReview plugin contains the original code roasting functionality. It:
 
 **Configuration:**
 ```json
-"ani-vscode.plugins.codeReview.enabled": true
+"ani-vscode.plugins.codeReview.enabled": true,
+"ani-vscode.plugins.codeReview.weight": 2.0  // Default: 2.0
 ```
 
 ### HackerNews Plugin (`src/plugins/HackerNewsPlugin.ts`)
@@ -75,7 +121,8 @@ The HackerNews plugin fetches top stories from Hacker News and asks the AI to co
 
 **Configuration:**
 ```json
-"ani-vscode.plugins.hackerNews.enabled": true
+"ani-vscode.plugins.hackerNews.enabled": true,
+"ani-vscode.plugins.hackerNews.weight": 1.0  // Default: 1.0
 ```
 
 ### RSS Feed Plugin (`src/plugins/RSSFeedPlugin.ts`)
@@ -85,6 +132,7 @@ The RSS Feed plugin fetches articles from configured RSS feeds and asks the AI t
 **Configuration:**
 ```json
 "ani-vscode.plugins.rssFeed.enabled": true,
+"ani-vscode.plugins.rssFeed.weight": 1.0,  // Default: 1.0
 "ani-vscode.plugins.rssFeed.feeds": [
   "https://example.com/feed.xml"
 ]
@@ -103,7 +151,8 @@ The Screenshot plugin captures your workspace and asks a vision-capable AI to co
 
 **Configuration:**
 ```json
-"ani-vscode.plugins.screenshot.enabled": false
+"ani-vscode.plugins.screenshot.enabled": false,
+"ani-vscode.plugins.screenshot.weight": 0.5  // Default: 0.5
 ```
 
 ## Creating a New Plugin
@@ -124,6 +173,17 @@ export class MyPlugin implements IPlugin {
 
   isEnabled(config: vscode.WorkspaceConfiguration): boolean {
     return config.get<boolean>('plugins.myPlugin.enabled', false);
+  }
+
+  // Optional: Define a default weight for this plugin
+  getWeight(config: vscode.WorkspaceConfiguration): number {
+    return 1.0; // Default weight
+  }
+
+  // Optional: Control when this plugin should be eligible to trigger
+  shouldTrigger(context: PluginContext): boolean {
+    // Return false if the plugin shouldn't trigger in the current context
+    return true;
   }
 
   async generateMessage(context: PluginContext): Promise<PluginMessage | null> {

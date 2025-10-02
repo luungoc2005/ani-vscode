@@ -29,7 +29,27 @@ export class PluginManager {
   }
 
   /**
+   * Get the effective weight for a plugin (user config overrides default)
+   */
+  private getPluginWeight(plugin: IPlugin, config: vscode.WorkspaceConfiguration): number {
+    // Try to get user-configured weight first
+    const userWeight = config.get<number>(`plugins.${plugin.id}.weight`);
+    if (userWeight !== undefined && userWeight >= 0) {
+      return userWeight;
+    }
+    
+    // Fall back to plugin's default weight
+    if (plugin.getWeight) {
+      return plugin.getWeight(config);
+    }
+    
+    // Default weight is 1.0
+    return 1.0;
+  }
+
+  /**
    * Randomly select an enabled plugin that should trigger in the current context
+   * Uses weighted random selection based on plugin weights
    */
   selectRandomPlugin(config: vscode.WorkspaceConfiguration, context?: PluginContext): IPlugin | null {
     let enabled = this.getEnabledPlugins(config);
@@ -48,8 +68,27 @@ export class PluginManager {
     if (enabled.length === 0) {
       return null;
     }
-    const index = Math.floor(Math.random() * enabled.length);
-    return enabled[index];
+
+    // Build weighted list
+    const weights = enabled.map(plugin => this.getPluginWeight(plugin, config));
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+    
+    // If total weight is 0, return null (all plugins have 0 weight)
+    if (totalWeight === 0) {
+      return null;
+    }
+    
+    // Weighted random selection
+    let random = Math.random() * totalWeight;
+    for (let i = 0; i < enabled.length; i++) {
+      random -= weights[i];
+      if (random <= 0) {
+        return enabled[i];
+      }
+    }
+    
+    // Fallback (shouldn't happen, but just in case)
+    return enabled[enabled.length - 1];
   }
 
   /**

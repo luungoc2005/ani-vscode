@@ -39,6 +39,11 @@ export class HackerNewsPlugin implements IPlugin {
     return config.get<boolean>('plugins.hackerNews.enabled', true);
   }
 
+  getWeight(config: vscode.WorkspaceConfiguration): number {
+    // Default weight for HackerNews plugin
+    return 1.0;
+  }
+
   shouldTrigger(context: PluginContext): boolean {
     // HackerNews plugin can always trigger (doesn't depend on editor state)
     return true;

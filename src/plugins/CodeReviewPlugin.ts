@@ -18,6 +18,11 @@ export class CodeReviewPlugin implements IPlugin {
     return config.get<boolean>('plugins.codeReview.enabled', true);
   }
 
+  getWeight(config: vscode.WorkspaceConfiguration): number {
+    // Default weight for Code Review plugin
+    return 1.0;
+  }
+
   shouldTrigger(context: PluginContext): boolean {
     const { editor } = context;
     

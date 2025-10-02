@@ -41,6 +41,13 @@ export interface IPlugin {
   isEnabled(config: vscode.WorkspaceConfiguration): boolean;
 
   /**
+   * Get the default weight for this plugin (higher = more likely to trigger)
+   * Default weight is 1.0 if not specified
+   * Can be overridden by user configuration
+   */
+  getWeight?(config: vscode.WorkspaceConfiguration): number;
+
+  /**
    * Whether this plugin should trigger in the current context
    * Used by the periodic trigger to filter out plugins that shouldn't run
    * Returns true by default if not implemented
