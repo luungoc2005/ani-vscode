@@ -5,6 +5,7 @@ import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
 import { PluginContext } from './plugins/IPlugin';
 import { getCharacterSystemPrompt } from './CharacterLoader';
+import { TelemetryService } from './TelemetryService';
 import motionsMap from './motions_map.json';
 
 /**
@@ -13,6 +14,7 @@ import motionsMap from './motions_map.json';
 export class AgentLoop {
   private messageQueue: MessageQueue;
   private pluginManager: PluginManager;
+  private telemetry: TelemetryService | null = null;
   private llmInFlight = false;
   private roastDebounceTimer: NodeJS.Timeout | undefined;
   private cooldownTimer: NodeJS.Timeout | undefined;
@@ -25,6 +27,13 @@ export class AgentLoop {
   constructor(messageQueue: MessageQueue, pluginManager: PluginManager) {
     this.messageQueue = messageQueue;
     this.pluginManager = pluginManager;
+  }
+
+  /**
+   * Set the telemetry service
+   */
+  setTelemetryService(telemetry: TelemetryService): void {
+    this.telemetry = telemetry;
   }
 
   /**
@@ -57,7 +66,17 @@ export class AgentLoop {
       clearTimeout(this.roastDebounceTimer);
     }
     // Debounce slightly to avoid spamming on rapid cursor/keys
-    this.roastDebounceTimer = setTimeout(() => this.run(pluginId), 500);
+    this.roastDebounceTimer = setTimeout(() => {
+      // Record plugin triggered event if a specific plugin is being triggered
+      if (pluginId && this.telemetry) {
+        const cfg = vscode.workspace.getConfiguration('ani-vscode');
+        const plugin = this.pluginManager.getPlugin(pluginId);
+        if (plugin && plugin.isEnabled(cfg)) {
+          this.telemetry.recordPluginTriggered(pluginId, 'auto');
+        }
+      }
+      this.run(pluginId);
+    }, 500);
   }
 
   /**
@@ -357,12 +376,17 @@ export class AgentLoop {
   /**
    * Trigger a specific plugin by ID
    */
-  async triggerPlugin(pluginId: string): Promise<void> {
+  async triggerPlugin(pluginId: string, triggerType: 'auto' | 'periodic' | 'manual' = 'manual'): Promise<void> {
     const cfg = vscode.workspace.getConfiguration('ani-vscode');
     const plugin = this.pluginManager.getPlugin(pluginId);
     
     if (!plugin || !plugin.isEnabled(cfg)) {
       return;
+    }
+
+    // Record plugin triggered event
+    if (this.telemetry) {
+      this.telemetry.recordPluginTriggered(pluginId, triggerType);
     }
 
     // Delegate to run() with skipReschedule
@@ -500,7 +524,7 @@ Respond with ONLY the expression name, nothing else.`;
       return;
     }
 
-    // Delegate to triggerPlugin
-    await this.triggerPlugin(plugin.id);
+    // Delegate to triggerPlugin with 'periodic' trigger type
+    await this.triggerPlugin(plugin.id, 'periodic');
   }
 }

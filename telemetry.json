@@ -1,0 +1,94 @@
+{
+  "connectionString": "InstrumentationKey=6bc6947c-fe8b-473e-9caf-bfc436ebfb14;IngestionEndpoint=https://eastasia-0.in.applicationinsights.azure.com/;LiveEndpoint=https://eastasia.livediagnostics.monitor.azure.com/;ApplicationId=71da0b5b-cc56-4aec-b943-953b69623c5d",
+  "events": {
+    "panelOpened": {
+      "description": "Recorded when the user opens the Ani assistant panel",
+      "properties": {
+        "character": {
+          "type": "string",
+          "description": "The character model being used (e.g., 'Hiyori', 'Mao')"
+        },
+        "transparentBackground": {
+          "type": "string",
+          "description": "Whether transparent background is enabled ('true'/'false')"
+        },
+        "debugPanel": {
+          "type": "string",
+          "description": "Whether debug panel is shown ('true'/'false')"
+        }
+      }
+    },
+    "characterChanged": {
+      "description": "Recorded when the user switches between character models",
+      "properties": {
+        "oldCharacter": {
+          "type": "string",
+          "description": "The previous character name"
+        },
+        "newCharacter": {
+          "type": "string",
+          "description": "The new character name"
+        }
+      }
+    },
+    "modelUsed": {
+      "description": "Recorded when LLM models are configured (sent twice on panel open)",
+      "properties": {
+        "modelType": {
+          "type": "string",
+          "description": "Either 'main' or 'fast'"
+        },
+        "modelName": {
+          "type": "string",
+          "description": "The name of the model being used"
+        }
+      }
+    },
+    "pluginTriggered": {
+      "description": "Recorded whenever a plugin is triggered",
+      "properties": {
+        "pluginId": {
+          "type": "string",
+          "description": "The ID of the plugin (e.g., 'codeReview', 'hackerNews', 'rssFeed', 'screenshot')"
+        },
+        "triggerType": {
+          "type": "string",
+          "enum": ["auto", "periodic", "manual"],
+          "description": "How the plugin was triggered: 'auto' (by user actions), 'periodic' (by timer), 'manual' (explicit user action)"
+        }
+      }
+    },
+    "pluginsEnabled": {
+      "description": "Recorded on panel open to track which plugins are currently enabled",
+      "properties": {
+        "plugins": {
+          "type": "string",
+          "description": "Comma-separated list of enabled plugin IDs"
+        },
+        "count": {
+          "type": "string",
+          "description": "Number of enabled plugins"
+        }
+      }
+    },
+    "error": {
+      "description": "Recorded when errors occur in the extension",
+      "properties": {
+        "errorType": {
+          "type": "string",
+          "description": "The type/category of the error"
+        },
+        "errorMessage": {
+          "type": "string",
+          "description": "The error message"
+        }
+      },
+      "measurements": {
+        "stack": {
+          "type": "number",
+          "description": "1 if stack trace is available, 0 otherwise"
+        }
+      }
+    }
+  }
+}

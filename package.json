@@ -75,7 +75,7 @@
         },
         "ani-vscode.plugins.codeReview.weight": {
           "type": "number",
-          "default": 1.0,
+          "default": 1,
           "minimum": 0,
           "description": "Weight for Code Review plugin selection (higher = more likely to trigger). Default: 1.0"
         },
@@ -86,7 +86,7 @@
         },
         "ani-vscode.plugins.hackerNews.weight": {
           "type": "number",
-          "default": 1.0,
+          "default": 1,
           "minimum": 0,
           "description": "Weight for HackerNews plugin selection (higher = more likely to trigger). Default: 1.0"
         },
@@ -97,7 +97,7 @@
         },
         "ani-vscode.plugins.rssFeed.weight": {
           "type": "number",
-          "default": 1.0,
+          "default": 1,
           "minimum": 0,
           "description": "Weight for RSS Feed plugin selection (higher = more likely to trigger). Default: 1.0"
         },
@@ -118,7 +118,7 @@
         },
         "ani-vscode.plugins.screenshot.weight": {
           "type": "number",
-          "default": 2.0,
+          "default": 2,
           "minimum": 0,
           "description": "Weight for Screenshot plugin selection (higher = more likely to trigger). Default: 2.0"
         },
@@ -157,6 +157,7 @@
   "dependencies": {
     "@langchain/core": "^0.3.77",
     "@langchain/openai": "^0.6.13",
+    "@vscode/extension-telemetry": "^1.0.0",
     "pixelmatch": "^6.0.0",
     "pngjs": "^7.0.0"
   }

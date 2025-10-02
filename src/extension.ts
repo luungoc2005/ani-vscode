@@ -8,8 +8,14 @@ import { HackerNewsPlugin } from './plugins/HackerNewsPlugin';
 import { RSSFeedPlugin } from './plugins/RSSFeedPlugin';
 import { ScreenshotPlugin } from './plugins/ScreenshotPlugin';
 import { AgentLoop } from './AgentLoop';
+import { TelemetryService } from './TelemetryService';
+
+const TELEMETRY_CONNECTION_STRING = 'InstrumentationKey=6bc6947c-fe8b-473e-9caf-bfc436ebfb14;IngestionEndpoint=https://eastasia-0.in.applicationinsights.azure.com/;LiveEndpoint=https://eastasia.livediagnostics.monitor.azure.com/;ApplicationId=71da0b5b-cc56-4aec-b943-953b69623c5d';
 
 export function activate(context: vscode.ExtensionContext) {
+  // Initialize telemetry
+  const telemetry = TelemetryService.initialize(TELEMETRY_CONNECTION_STRING);
+  context.subscriptions.push({ dispose: () => telemetry.dispose() });
   const disposable = vscode.commands.registerCommand('ani-vscode.showPanel', () => {
     const panel = vscode.window.createWebviewPanel(
       'aniVscodePanel',
@@ -43,6 +49,17 @@ export function activate(context: vscode.ExtensionContext) {
     const transparentBackground = cfg.get<boolean>('transparentBackground', true);
     const character = cfg.get<string>('character', 'Hiyori');
     const debugPanel = cfg.get<boolean>('debugPanel', false);
+
+    // Record panel opened event
+    telemetry.recordPanelOpened(character, transparentBackground, debugPanel);
+
+    // Record model configuration
+    const mainModel = cfg.get<string>('llm.model', 'unknown');
+    const fastModel = cfg.get<string>('llm.fastModel', '');
+    telemetry.recordModelUsed('main', mainModel);
+    if (fastModel) {
+      telemetry.recordModelUsed('fast', fastModel);
+    }
 
     // Rewrite asset paths for VSCode webview
     const asWebviewUri = (p: string) => panel.webview.asWebviewUri(vscode.Uri.file(p)).toString();
@@ -129,12 +146,17 @@ export function activate(context: vscode.ExtensionContext) {
     
     const screenshotPlugin = new ScreenshotPlugin();
     pluginManager.register(screenshotPlugin);
+
+    // Record enabled plugins
+    const enabledPlugins = pluginManager.getEnabledPlugins(cfg).map(p => p.id);
+    telemetry.recordEnabledPlugins(enabledPlugins);
     
     // Initialize agent loop
     const agentLoop = new AgentLoop(messageQueue, pluginManager);
     agentLoop.setPanel(panel);
     agentLoop.setExtensionPath(context.extensionPath);
     agentLoop.setCharacter(character);
+    agentLoop.setTelemetryService(telemetry);
     
     // Track last edited files (MRU) for context
     const lastEditedFiles: string[] = [];
@@ -219,6 +241,10 @@ export function activate(context: vscode.ExtensionContext) {
     // Listen for messages from webview
     const messageListener = panel.webview.onDidReceiveMessage((message) => {
       if (message.type === 'characterChanged' && message.characterName) {
+        // Record character change
+        const oldCharacter = agentLoop.getCurrentCharacter();
+        telemetry.recordCharacterChanged(oldCharacter, message.characterName);
+        
         // Update agent loop's character
         agentLoop.setCharacter(message.characterName);
         
