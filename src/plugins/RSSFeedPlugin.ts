@@ -22,6 +22,10 @@ interface RSSItem {
 export class RSSFeedPlugin implements IPlugin {
   readonly id = 'rssFeed';
   readonly name = 'RSS Feed Reader';
+  
+  // Track mentioned article links to avoid repetition
+  private mentionedArticles: Set<string> = new Set();
+  private readonly MAX_HISTORY = 100; // Keep track of last 100 articles
 
   isEnabled(config: vscode.WorkspaceConfiguration): boolean {
     return config.get<boolean>('plugins.rssFeed.enabled', true);
@@ -201,9 +205,27 @@ export class RSSFeedPlugin implements IPlugin {
         return null;
       }
 
-      // Randomly select 1 article from the feed
-      const selectedArticles = this.randomSelect(items, 1);
+      // Filter out already mentioned articles
+      const unmentionedItems = items.filter(item => !this.mentionedArticles.has(item.link));
+      
+      if (unmentionedItems.length === 0) {
+        // If all articles have been mentioned, clear history and start fresh
+        this.mentionedArticles.clear();
+        return null;
+      }
+
+      // Randomly select 1 article from the unmentioned feed items
+      const selectedArticles = this.randomSelect(unmentionedItems, 1);
       const item = selectedArticles[0];
+      
+      // Mark this article as mentioned
+      this.mentionedArticles.add(item.link);
+      
+      // Limit the size of the history set
+      if (this.mentionedArticles.size > this.MAX_HISTORY) {
+        const articlesArray = Array.from(this.mentionedArticles);
+        this.mentionedArticles = new Set(articlesArray.slice(-this.MAX_HISTORY));
+      }
 
       // Format article for the prompt
       const parts = [];

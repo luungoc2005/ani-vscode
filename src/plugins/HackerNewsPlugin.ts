@@ -35,6 +35,10 @@ interface HNComment {
 export class HackerNewsPlugin implements IPlugin {
   readonly id = 'hackerNews';
   readonly name = 'HackerNews Reader';
+  
+  // Track mentioned article IDs to avoid repetition
+  private mentionedArticles: Set<number> = new Set();
+  private readonly MAX_HISTORY = 100; // Keep track of last 100 articles
 
   isEnabled(config: vscode.WorkspaceConfiguration): boolean {
     return config.get<boolean>('plugins.hackerNews.enabled', true);
@@ -161,8 +165,17 @@ export class HackerNewsPlugin implements IPlugin {
       // Fetch top stories (returns array of IDs)
       const topStoryIds = await this.fetchTopStories();
       
-      // Get top 30 stories and randomly select 1
-      const selectedIds = this.randomSelect(topStoryIds.slice(0, 30), 1);
+      // Filter out already mentioned articles
+      const unmentionedStoryIds = topStoryIds.filter(id => !this.mentionedArticles.has(id));
+      
+      if (unmentionedStoryIds.length === 0) {
+        // If all articles have been mentioned, clear history and start fresh
+        this.mentionedArticles.clear();
+        return null;
+      }
+      
+      // Get top 30 unmentioned stories and randomly select 1
+      const selectedIds = this.randomSelect(unmentionedStoryIds.slice(0, 30), 1);
       
       // Fetch article details for selected story
       const articles = await Promise.all(
@@ -177,6 +190,15 @@ export class HackerNewsPlugin implements IPlugin {
       }
 
       const article = validArticles[0];
+      
+      // Mark this article as mentioned
+      this.mentionedArticles.add(article.id);
+      
+      // Limit the size of the history set
+      if (this.mentionedArticles.size > this.MAX_HISTORY) {
+        const articlesArray = Array.from(this.mentionedArticles);
+        this.mentionedArticles = new Set(articlesArray.slice(-this.MAX_HISTORY));
+      }
       const hnLink = `https://news.ycombinator.com/item?id=${article.id}`;
 
       // Fetch top comments for the article
