@@ -148,6 +148,13 @@ export function App() {
 
     return () => {
       dispose?.();
+      window.removeEventListener('message', onMessage);
+      document.removeEventListener('pointermove', onPointerMove);
+      if (caretTimeout != null) {
+        window.clearTimeout(caretTimeout);
+      }
+      // Clean up global function
+      window.setSpeechBubble = undefined;
     };
   }, []);
 

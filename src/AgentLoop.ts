@@ -588,4 +588,20 @@ Respond with ONLY the expression name, nothing else.`;
       return { success: false, error: msg };
     }
   }
+
+  /**
+   * Clean up timers and resources
+   */
+  dispose(): void {
+    if (this.roastDebounceTimer) {
+      clearTimeout(this.roastDebounceTimer);
+      this.roastDebounceTimer = undefined;
+    }
+    if (this.cooldownTimer) {
+      clearTimeout(this.cooldownTimer);
+      this.cooldownTimer = undefined;
+    }
+    // Clear the panel reference to prevent memory leaks
+    (this as any).panel = null;
+  }
 }

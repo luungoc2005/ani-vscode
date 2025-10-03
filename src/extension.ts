@@ -17,10 +17,13 @@ export function activate(context: vscode.ExtensionContext) {
   const telemetry = TelemetryService.initialize(TELEMETRY_CONNECTION_STRING);
   context.subscriptions.push({ dispose: () => telemetry.dispose() });
   const disposable = vscode.commands.registerCommand('ani-vscode.showPanel', () => {
+    // Retrieve last panel position, defaulting to Beside if not previously saved
+    const lastPanelColumn = context.globalState.get<vscode.ViewColumn>('ani-vscode.lastPanelColumn', vscode.ViewColumn.Beside);
+    
     const panel = vscode.window.createWebviewPanel(
       'aniVscodePanel',
       'Ani: AI Assistant',
-      vscode.ViewColumn.Beside,
+      lastPanelColumn,
       {
         enableScripts: true,
         localResourceRoots: [
@@ -104,6 +107,10 @@ export function activate(context: vscode.ExtensionContext) {
     let panelColumn = panel.viewColumn;
     panel.onDidChangeViewState((e) => {
       panelColumn = e.webviewPanel.viewColumn;
+      // Save the panel column whenever it changes
+      if (panelColumn !== undefined) {
+        context.globalState.update('ani-vscode.lastPanelColumn', panelColumn);
+      }
     });
 
     // Post caret position updates to the webview when an editor is focused and selection changes
@@ -295,14 +302,26 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     panel.onDidDispose(() => {
+      // Save the panel column before disposal
+      if (panelColumn !== undefined) {
+        context.globalState.update('ani-vscode.lastPanelColumn', panelColumn);
+      }
+      
+      // Dispose of all listeners
       selectionListener.dispose();
       focusListener.dispose();
       keysListener.dispose();
       configListener.dispose();
       messageListener.dispose();
+      
+      // Clear the periodic timer
       if (periodicTimer) {
         clearInterval(periodicTimer);
+        periodicTimer = undefined;
       }
+      
+      // Dispose of the agent loop to clean up its timers
+      agentLoop.dispose();
     });
   });
 
