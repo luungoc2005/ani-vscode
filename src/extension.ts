@@ -20,6 +20,11 @@ export function activate(context: vscode.ExtensionContext) {
     // Retrieve last panel position, defaulting to Beside if not previously saved
     const lastPanelColumn = context.globalState.get<vscode.ViewColumn>('ani-vscode.lastPanelColumn', vscode.ViewColumn.Beside);
     
+    // Use the saved position directly. VS Code will handle the positioning intelligently:
+    // - Beside (-2) creates a split to the side of the active editor
+    // - Resolved columns (One, Two, etc.) open in that specific column, creating it if needed
+    // This preserves the user's last panel position whether it was left, right, or any column
+    
     const panel = vscode.window.createWebviewPanel(
       'aniVscodePanel',
       'Ani: AI Assistant',
