@@ -227,6 +227,21 @@ export function activate(context: vscode.ExtensionContext) {
     // Initial setup
     setupPeriodicTrigger();
     
+    // Test connectivity immediately when panel opens
+    (async () => {
+      const result = await agentLoop.testConnectivity();
+      if (!result.success) {
+        // Show setup guide immediately if connectivity fails
+        panel.webview.postMessage({
+          type: 'setupError',
+          message: result.error || 'Failed to connect to LLM service'
+        });
+      } else {
+        // Notify webview that connection is working
+        panel.webview.postMessage({ type: 'connectionSuccess' });
+      }
+    })();
+    
     // Listen for configuration changes
     const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('ani-vscode.plugins.periodicIntervalMinutes')) {
@@ -255,6 +270,27 @@ export function activate(context: vscode.ExtensionContext) {
         setTimeout(() => {
           agentLoop.triggerRandomPlugin();
         }, 500);
+      } else if (message.type === 'openSettings') {
+        // Open VSCode settings for ani-vscode
+        vscode.commands.executeCommand('workbench.action.openSettings', 'ani-vscode');
+      } else if (message.type === 'retryConnection') {
+        // Test connectivity immediately
+        (async () => {
+          const result = await agentLoop.testConnectivity();
+          if (!result.success) {
+            // Show error again if still failing
+            panel.webview.postMessage({
+              type: 'setupError',
+              message: result.error || 'Failed to connect to LLM service'
+            });
+          } else {
+            // Connection successful, trigger a plugin to show it's working
+            panel.webview.postMessage({ type: 'connectionSuccess' });
+            setTimeout(() => {
+              agentLoop.triggerRandomPlugin();
+            }, 500);
+          }
+        })();
       }
     });
 

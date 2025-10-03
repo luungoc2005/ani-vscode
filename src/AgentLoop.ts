@@ -262,13 +262,39 @@ export class AgentLoop {
         const displayText = appendText ? text + appendText : text;
         panel.webview.postMessage({ type: 'speech', text: displayText });
         
+        // Send connection success message to hide setup guide if it's showing
+        panel.webview.postMessage({ type: 'connectionSuccess' });
+        
         // Trigger expression animation if fastModel is configured
         await this.triggerExpression(text, panel, cfg);
       }
     } catch (err: any) {
       const msg = err?.message || String(err);
       const panel = (this as any).panel as vscode.WebviewPanel;
-      if (panel) {
+      
+      // Check if this is a connection error or model not found error
+      const isConnectionError = 
+        msg.toLowerCase().includes('econnrefused') ||
+        msg.toLowerCase().includes('fetch failed') ||
+        msg.toLowerCase().includes('network') ||
+        msg.toLowerCase().includes('connection') ||
+        msg.toLowerCase().includes('getaddrinfo') ||
+        msg.toLowerCase().includes('etimedout');
+      
+      const isModelError = 
+        msg.toLowerCase().includes('model') && 
+        (msg.toLowerCase().includes('not found') || 
+         msg.toLowerCase().includes('does not exist') ||
+         msg.toLowerCase().includes('not available'));
+      
+      if (panel && (isConnectionError || isModelError)) {
+        // Send structured error to show setup guide
+        panel.webview.postMessage({ 
+          type: 'setupError', 
+          message: msg 
+        });
+      } else if (panel) {
+        // For other errors, just show in speech bubble
         panel.webview.postMessage({ type: 'speech', text: `LLM error: ${msg}` });
       }
     } finally {
@@ -526,5 +552,40 @@ Respond with ONLY the expression name, nothing else.`;
 
     // Delegate to triggerPlugin with 'periodic' trigger type
     await this.triggerPlugin(plugin.id, 'periodic');
+  }
+
+  /**
+   * Test connectivity to the LLM service quickly
+   * Returns true if connection successful, false otherwise
+   */
+  async testConnectivity(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const cfg = vscode.workspace.getConfiguration('ani-vscode');
+      const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
+      const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
+      const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
+
+      // Create a simple test LLM instance with a short timeout
+      const llmFields: ChatOpenAIFields = {
+        model,
+        configuration: { baseURL: baseUrl },
+        timeout: 5000, // 5 second timeout for quick check
+        maxRetries: 0, // Don't retry on failure
+      };
+      if (apiKey) {
+        llmFields.apiKey = apiKey;
+      }
+      const llm = new ChatOpenAI(llmFields);
+
+      // Send a minimal test message
+      const testMessage = new HumanMessage('Hi');
+      const response = await llm.invoke([testMessage]);
+
+      // If we got here, connection works
+      return { success: true };
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      return { success: false, error: msg };
+    }
   }
 }

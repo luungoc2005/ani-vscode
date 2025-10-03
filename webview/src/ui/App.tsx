@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SpeechBubble } from '../components/SpeechBubble';
 import { ThinkingDots } from '../components/ThinkingDots';
 import { DebugPanel } from '../components/DebugPanel';
+import { SetupGuide } from '../components/SetupGuide';
 import { bootCubism } from '../viewer/boot';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { ModelSwitchButton } from '../components/ModelSwitchButton';
@@ -22,6 +23,9 @@ export function App() {
   const [dismissSpeech, setDismissSpeech] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [showSetupGuide, setShowSetupGuide] = useState(true); // Show initially while testing
+  const [setupErrorMessage, setSetupErrorMessage] = useState<string | undefined>(undefined);
+  const [isTestingConnection, setIsTestingConnection] = useState(true); // Start with testing state
 
   const copyTextToClipboard = async (_text: string) => {};
 
@@ -107,6 +111,21 @@ export function App() {
             });
           }
         }
+      } else if (data.type === 'setupError' && typeof data.message === 'string') {
+        // Show setup guide when there's a connection error
+        setSetupErrorMessage(data.message);
+        setShowSetupGuide(true);
+        setIsTestingConnection(false);
+        // Hide thinking indicator
+        setIsThinking(false);
+      } else if (data.type === 'connectionSuccess') {
+        // Hide setup guide on successful connection
+        setShowSetupGuide(false);
+        setSetupErrorMessage(undefined);
+        setIsTestingConnection(false);
+      } else if (data.type === 'testingConnection' && typeof data.testing === 'boolean') {
+        // Update testing state
+        setIsTestingConnection(data.testing);
       }
     };
 
@@ -132,11 +151,23 @@ export function App() {
     };
   }, []);
 
+  const handleRetryConnection = () => {
+    setIsTestingConnection(true);
+    const vscode = (window as any).acquireVsCodeApi?.();
+    if (vscode) {
+      vscode.postMessage({ type: 'retryConnection' });
+    }
+  };
+
+  const handleDismissSetupGuide = () => {
+    setShowSetupGuide(false);
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div style={{ width: '100%', height: '100%' }} ref={containerRef} />
-      <ThinkingDots visible={isThinking} />
-      {speechText && (
+      <ThinkingDots visible={isThinking && !showSetupGuide} />
+      {speechText && !showSetupGuide && (
         <SpeechBubble
           text={speechText}
           options={speechOptions}
@@ -149,6 +180,13 @@ export function App() {
       )}
       <ModelSwitchButton />
       <DebugPanel visible={showDebugPanel} />
+      <SetupGuide
+        visible={showSetupGuide}
+        errorMessage={setupErrorMessage}
+        onRetry={handleRetryConnection}
+        onDismiss={handleDismissSetupGuide}
+        isTesting={isTestingConnection}
+      />
     </div>
   );
 }
