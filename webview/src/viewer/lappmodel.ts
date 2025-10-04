@@ -906,6 +906,39 @@ export class LAppModel extends CubismUserModel {
   }
 
   /**
+   * Get all available expressions for debugging.
+   * @returns Array of expression information with logical name and source file
+   */
+  public getAvailableExpressions(): Array<{ name: string; fileName: string }> {
+    if (!this._modelSetting) {
+      return [];
+    }
+
+    if (!this._initialized) {
+      return [];
+    }
+
+    const result: Array<{ name: string; fileName: string }> = [];
+
+    try {
+      const expressionCount = this._modelSetting.getExpressionCount();
+
+      for (let i = 0; i < expressionCount; i++) {
+        const name = this._modelSetting.getExpressionName(i);
+        const fileName = this._modelSetting.getExpressionFileName(i);
+        result.push({
+          name,
+          fileName: fileName.split('/').pop() || fileName,
+        });
+      }
+    } catch (error) {
+      console.error('LAppModel.getAvailableExpressions - Error:', error);
+    }
+
+    return result;
+  }
+
+  /**
    * Get the model's directory name
    */
   public getModelName(): string {

@@ -44,7 +44,7 @@ export function bootCubism(container: HTMLElement) {
     } catch (e) {
       console.error('Error getting available motions:', e);
     }
-    return { motions: [], modelName: '' };
+    return { motions: [], expressions: [], modelName: '' };
   };
 
   (window as any).playMotion = (group: string, index: number) => {
@@ -59,6 +59,21 @@ export function bootCubism(container: HTMLElement) {
       }
     } catch (e) {
       console.error('Error playing motion:', e);
+    }
+  };
+
+  (window as any).playExpression = (expressionId: string) => {
+    try {
+      console.log('playExpression called:', expressionId);
+      const delegate = LAppDelegate.getInstance();
+      if ((delegate as any)._subdelegates && (delegate as any)._subdelegates.getSize() > 0) {
+        const subdelegate = (delegate as any)._subdelegates.at(0);
+        const manager = subdelegate.getLive2DManager();
+        manager.playExpression(expressionId);
+        console.log('playExpression - Expression applied successfully');
+      }
+    } catch (e) {
+      console.error('Error applying expression:', e);
     }
   };
 

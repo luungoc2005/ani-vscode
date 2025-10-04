@@ -58,6 +58,65 @@ export function App() {
     const debugPanelEnabled = document.body?.getAttribute('data-debug-panel') === 'true';
     setShowDebugPanel(debugPanelEnabled);
 
+    const normalizeFileName = (value?: string) => value?.split('/').pop()?.toLowerCase();
+    const normalizeKey = (value?: string) => value ? value.replace(/[\s_\-]+/g, '').toLowerCase() : undefined;
+
+    const playEmotion = (payload: { fileName: string; emotion?: string; targetType?: 'motion' | 'expression' }) => {
+      if (!(window as any).getAvailableMotions) {
+        console.warn('playEmotion - getAvailableMotions missing');
+        return;
+      }
+
+      const data = (window as any).getAvailableMotions();
+      if (!data) {
+        return;
+      }
+
+      const { motions = [], expressions = [] } = data;
+      const targetFile = normalizeFileName(payload.fileName);
+      const emotionHint = normalizeKey(payload.emotion);
+
+      const motionMatch = motions.find((motion: any) => normalizeFileName(motion.fileName) === targetFile);
+
+      let played = false;
+
+      if (payload.targetType !== 'expression' && motionMatch && (window as any).playMotion) {
+        (window as any).playMotion(motionMatch.group, motionMatch.index);
+        played = true;
+      }
+
+      if (!played) {
+        const expressionMatch = expressions.find((expression: any) => {
+          const byFile = targetFile && normalizeFileName(expression.fileName) === targetFile;
+          if (byFile) {
+            return true;
+          }
+          if (emotionHint && expression.name) {
+            const expressionKey = normalizeKey(expression.name);
+            if (expressionKey === emotionHint) {
+              return true;
+            }
+          }
+          return false;
+        });
+
+        if (expressionMatch && (window as any).playExpression) {
+          (window as any).playExpression(expressionMatch.name);
+          played = true;
+        }
+      }
+
+      if (!played && motionMatch && (window as any).playMotion) {
+        // As a final fallback, try playing the motion even if targetType was expression
+        (window as any).playMotion(motionMatch.group, motionMatch.index);
+        played = true;
+      }
+
+      if (!played) {
+        console.warn('playEmotion - No matching emotion asset found for', payload);
+      }
+    };
+
     const onMessage = (ev: MessageEvent) => {
       const data = ev?.data as any;
       if (!data || typeof data !== 'object') return;
@@ -90,15 +149,8 @@ export function App() {
         setShowDebugPanel((prev) => !prev);
       } else if (data.type === 'setDebugPanel' && typeof data.visible === 'boolean') {
         setShowDebugPanel(data.visible);
-      } else if (data.type === 'playMotionByFileName' && typeof data.fileName === 'string') {
-        // Get current model's motions and find the one matching fileName
-        if ((window as any).getAvailableMotions && (window as any).playMotion) {
-          const motionsData = (window as any).getAvailableMotions();
-          const motion = motionsData.motions?.find((m: any) => m.fileName === data.fileName);
-          if (motion) {
-            (window as any).playMotion(motion.group, motion.index);
-          }
-        }
+      } else if ((data.type === 'playEmotion' || data.type === 'playMotionByFileName') && typeof data.fileName === 'string') {
+        playEmotion({ fileName: data.fileName, emotion: data.emotion, targetType: data.targetType });
       } else if (data.type === 'getCurrentModel') {
         // Respond with current model name
         if ((window as any).getAvailableMotions) {

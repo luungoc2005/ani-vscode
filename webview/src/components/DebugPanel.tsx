@@ -6,6 +6,11 @@ interface Motion {
   fileName: string;
 }
 
+interface Expression {
+  name: string;
+  fileName: string;
+}
+
 interface DebugPanelProps {
   visible: boolean;
 }
@@ -18,6 +23,7 @@ interface ConsoleLog {
 
 export function DebugPanel({ visible }: DebugPanelProps) {
   const [motions, setMotions] = useState<Motion[]>([]);
+  const [expressions, setExpressions] = useState<Expression[]>([]);
   const [currentModel, setCurrentModel] = useState<string>('');
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
@@ -86,6 +92,7 @@ export function DebugPanel({ visible }: DebugPanelProps) {
         const data = (window as any).getAvailableMotions();
         // console.log('Debug Panel - Fetched motions:', data);
         setMotions(data.motions || []);
+        setExpressions(data.expressions || []);
         setCurrentModel(data.modelName || '');
       } else {
         console.warn('Debug Panel - getAvailableMotions not available on window');
@@ -98,6 +105,12 @@ export function DebugPanel({ visible }: DebugPanelProps) {
   const playMotion = (group: string, index: number) => {
     if ((window as any).playMotion) {
       (window as any).playMotion(group, index);
+    }
+  };
+
+  const applyExpression = (expressionId: string) => {
+    if ((window as any).playExpression) {
+      (window as any).playExpression(expressionId);
     }
   };
 
@@ -213,6 +226,63 @@ export function DebugPanel({ visible }: DebugPanelProps) {
 
       <div
         style={{
+          marginTop: '10px',
+          marginBottom: '10px',
+          paddingTop: '10px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.2)',
+        }}
+      >
+        <div
+          style={{
+            fontSize: '12px',
+            fontWeight: 'bold',
+            marginBottom: '8px',
+            color: '#FFC107',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          😊 Expressions
+        </div>
+        {expressions.length === 0 ? (
+          <div style={{ color: '#888', fontStyle: 'italic' }}>No expressions available</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {expressions.map((expression) => (
+              <button
+                key={expression.name}
+                onClick={() => applyExpression(expression.name)}
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '4px',
+                  padding: '5px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 193, 7, 0.25)';
+                  e.currentTarget.style.borderColor = '#FFC107';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                }}
+              >
+                <div style={{ fontWeight: 'bold' }}>{expression.name}</div>
+                <div style={{ fontSize: '9px', color: '#bbb' }}>{expression.fileName}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
           marginTop: '15px',
           paddingTop: '10px',
           borderTop: '1px solid rgba(255, 255, 255, 0.2)',
@@ -221,7 +291,7 @@ export function DebugPanel({ visible }: DebugPanelProps) {
           textAlign: 'center',
         }}
       >
-        Click a motion to play
+        Click a motion to play or an expression to apply
       </div>
 
       <button

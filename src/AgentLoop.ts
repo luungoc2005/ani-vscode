@@ -502,14 +502,15 @@ Respond with ONLY the expression name, nothing else.`;
         selectedExpression = expressionText;
       }
       
-      // Get motion filename
+      // Get target asset
       if (selectedExpression) {
-        const motionFileName = characterExpressions[selectedExpression as keyof typeof characterExpressions];
-        if (motionFileName) {
-          // Send message to webview to play the motion
+        const assetIdentifier = characterExpressions[selectedExpression as keyof typeof characterExpressions];
+        if (assetIdentifier) {
           panel.webview.postMessage({
-            type: 'playMotionByFileName',
-            fileName: motionFileName,
+            type: 'playEmotion',
+            character,
+            emotion: selectedExpression,
+            fileName: assetIdentifier,
           });
         }
       }

@@ -112,13 +112,18 @@ export class LAppLive2DManager {
   /**
    * Get all available motions from the current model.
    */
-  public getAvailableMotions(): { motions: Array<{ group: string; index: number; fileName: string }>; modelName: string } {
+  public getAvailableMotions(): {
+    motions: Array<{ group: string; index: number; fileName: string }>;
+    expressions: Array<{ name: string; fileName: string }>;
+    modelName: string;
+  } {
     if (this._models.getSize() === 0) {
-      return { motions: [], modelName: '' };
+      return { motions: [], expressions: [], modelName: '' };
     }
     const model = this._models.at(0);
     return {
       motions: model.getAvailableMotions(),
+      expressions: model.getAvailableExpressions(),
       modelName: model.getModelName(),
     };
   }
@@ -138,6 +143,17 @@ export class LAppLive2DManager {
       this.finishedMotion,
       this.beganMotion
     );
+  }
+
+  /**
+   * Apply a specific named expression on the current model.
+   */
+  public playExpression(expressionId: string): void {
+    if (this._models.getSize() === 0) {
+      return;
+    }
+    const model = this._models.at(0);
+    model.setExpression(expressionId);
   }
 
   /**
