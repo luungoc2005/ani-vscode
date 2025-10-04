@@ -5,12 +5,16 @@
     "moduleResolution": "Node",
     "outDir": "out",
     "rootDir": "src",
+    "baseUrl": "./",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "types": ["vscode", "node"]
+    "types": ["vscode", "node"],
+    "paths": {
+      "vscode.git": ["./src/plugins/git/gitTypes"]
+    }
   },
   "include": ["src/**/*"]
 }

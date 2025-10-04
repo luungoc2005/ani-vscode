@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import { IPlugin, PluginContext, PluginMessage } from './IPlugin';
 
+type QueuedPrompt =
+  | {
+      kind: 'commitCompliment';
+      commitMessage: string;
+      repositoryName?: string;
+    };
+
 /**
  * CodeReview plugin that analyzes and roasts code
  */
@@ -13,6 +20,7 @@ export class CodeReviewPlugin implements IPlugin {
   private lastCaretLine: number | null = null;
   private lastCaretCharacter: number | null = null;
   private lastCaretFilePath: string | null = null;
+  private pendingPrompt: QueuedPrompt | null = null;
 
   isEnabled(config: vscode.WorkspaceConfiguration): boolean {
     return config.get<boolean>('plugins.codeReview.enabled', true);
@@ -25,7 +33,11 @@ export class CodeReviewPlugin implements IPlugin {
 
   shouldTrigger(context: PluginContext): boolean {
     const { editor } = context;
-    
+
+    if (this.pendingPrompt) {
+      return true;
+    }
+
     if (!editor) {
       return false;
     }
@@ -49,7 +61,24 @@ export class CodeReviewPlugin implements IPlugin {
 
   async generateMessage(context: PluginContext): Promise<PluginMessage | null> {
     const { editor, getRelativePath, getLinesAround } = context;
-    
+
+    if (this.pendingPrompt) {
+      const prompt = this.pendingPrompt;
+      this.pendingPrompt = null;
+
+      if (prompt.kind === 'commitCompliment') {
+        const userPrompt = this.createCommitComplimentPrompt({
+          commitMessage: prompt.commitMessage,
+          repositoryName: prompt.repositoryName
+        });
+
+        return {
+          userPrompt,
+          includeContext: false
+        };
+      }
+    }
+
     if (!editor) {
       return null;
     }
@@ -156,5 +185,27 @@ export class CodeReviewPlugin implements IPlugin {
   resetAnchor(): void {
     this.lastAnchorLine = null;
     this.lastFilePath = null;
+  }
+
+  queuePrompt(payload: QueuedPrompt): void {
+    this.pendingPrompt = payload;
+  }
+
+  createCommitComplimentPrompt(payload: {
+    commitMessage: string;
+    repositoryName?: string;
+  }): string {
+    const repoInfo = payload.repositoryName
+      ? `Repository: ${payload.repositoryName}`
+      : 'Repository: unknown';
+
+    return [
+      repoInfo,
+      'Last commit message:',
+      '```',
+      payload.commitMessage,
+      '```',
+      'Offer a warm, genuine compliment for the work reflected by this push. Then provide a brief, thoughtful comment on the commit message itself—call out anything clear, anything missing, or how it could be improved. Keep it upbeat, concise, and constructive.'
+    ].join('\n');
   }
 }

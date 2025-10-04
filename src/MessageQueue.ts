@@ -12,6 +12,13 @@ export class MessageQueue {
   }
 
   /**
+   * Add a message to the front of the queue
+   */
+  enqueueFront(message: string): void {
+    this.queue.unshift(message);
+  }
+
+  /**
    * Remove and return the next message from the queue
    */
   dequeue(): string | null {

@@ -3,7 +3,7 @@ import { ChatOpenAI, ChatOpenAIFields } from '@langchain/openai';
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
 import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
-import { PluginContext } from './plugins/IPlugin';
+import { PluginContext, EnqueueMessageOptions } from './plugins/IPlugin';
 import { getCharacterSystemPrompt } from './CharacterLoader';
 import { TelemetryService } from './TelemetryService';
 import motionsMap from './motions_map.json';
@@ -241,7 +241,8 @@ export class AgentLoop {
           ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
           : String(aiMsg.content ?? '');
       text = this.stripCodeBlockTags(text);
-      text = this.stripThinkTags(text);
+  text = this.stripThinkTags(text);
+  text = this.stripTrailingLlmArtifacts(text);
 
       // Notify the plugin of the AI response if it has an onResponse method
       if (triggeringPlugin && typeof triggeringPlugin.onResponse === 'function') {
@@ -317,8 +318,12 @@ export class AgentLoop {
   /**
    * Add a user message to the queue
    */
-  enqueueUserMessage(message: string): void {
-    this.messageQueue.enqueue(message);
+  enqueueUserMessage(message: string, options?: EnqueueMessageOptions): void {
+    if (options?.priority) {
+      this.messageQueue.enqueueFront(message);
+    } else {
+      this.messageQueue.enqueue(message);
+    }
   }
 
   /**
@@ -365,7 +370,10 @@ export class AgentLoop {
       lastEditedFiles,
       chatHistory: this.chatHistory,
       getRelativePath,
-      getLinesAround
+      getLinesAround,
+      enqueueMessage: (message: string, opts?: EnqueueMessageOptions) => {
+        this.enqueueUserMessage(message, opts);
+      }
     };
   }
 
@@ -397,6 +405,11 @@ export class AgentLoop {
   private stripThinkTags(text: string): string {
     // Remove all <think>...</think> blocks (including multiline)
     return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  };
+
+  // Utility function to remove trailing LLM decoder artifacts (e.g., </start_of_turn>)
+  private stripTrailingLlmArtifacts(text: string): string {
+    return text.replace(/\s*(?:<\/start_of_turn>|<\/end_of_turn>)+\s*$/i, '').trim();
   };
 
   /**

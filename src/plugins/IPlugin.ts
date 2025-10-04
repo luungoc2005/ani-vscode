@@ -9,6 +9,10 @@ export interface PluginMessage {
   text?: string; // Optional text to append to the LLM reply
 }
 
+export interface EnqueueMessageOptions {
+  priority?: boolean;
+}
+
 /**
  * Context passed to plugins when generating messages
  */
@@ -19,6 +23,7 @@ export interface PluginContext {
   chatHistory: any[];
   getRelativePath: (absPath: string) => string;
   getLinesAround: (doc: vscode.TextDocument, centerLine: number, radius: number) => { start: number; end: number; text: string };
+  enqueueMessage: (message: string, options?: EnqueueMessageOptions) => void;
 }
 
 /**

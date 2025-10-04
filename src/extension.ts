@@ -9,6 +9,7 @@ import { RSSFeedPlugin } from './plugins/RSSFeedPlugin';
 import { ScreenshotPlugin } from './plugins/ScreenshotPlugin';
 import { AgentLoop } from './AgentLoop';
 import { TelemetryService } from './TelemetryService';
+import { registerGitPushListener } from './plugins/git/GitIntegration';
 
 const TELEMETRY_CONNECTION_STRING = 'InstrumentationKey=6bc6947c-fe8b-473e-9caf-bfc436ebfb14;IngestionEndpoint=https://eastasia-0.in.applicationinsights.azure.com/;LiveEndpoint=https://eastasia.livediagnostics.monitor.azure.com/;ApplicationId=71da0b5b-cc56-4aec-b943-953b69623c5d';
 
@@ -327,6 +328,13 @@ export function activate(context: vscode.ExtensionContext) {
       
       // Dispose of the agent loop to clean up its timers
       agentLoop.dispose();
+    });
+
+    // Register Git push listener asynchronously (does not block panel creation)
+    void registerGitPushListener(codeReviewPlugin, agentLoop).then((disposable) => {
+      if (disposable) {
+        panel.onDidDispose(() => disposable.dispose());
+      }
     });
   });
 
