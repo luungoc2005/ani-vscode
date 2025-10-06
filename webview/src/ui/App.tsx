@@ -6,6 +6,7 @@ import { SetupGuide } from '../components/SetupGuide';
 import { bootCubism } from '../viewer/boot';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { ModelSwitchButton } from '../components/ModelSwitchButton';
+import { AudioUnlockButton } from '../components/AudioUnlockButton';
 import { prepareAudioForPlayback, type TtsAudioPayload } from '../audio/ttsAudio';
 
 declare global {
@@ -34,6 +35,7 @@ export function App() {
   const [setupErrorMessage, setSetupErrorMessage] = useState<string | undefined>(undefined);
   const [isTestingConnection, setIsTestingConnection] = useState(true); // Start with testing state
   const [ttsError, setTtsError] = useState<string | null>(null);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   const copyTextToClipboard = async (_text: string) => {};
 
@@ -46,6 +48,26 @@ export function App() {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
       return audioContextRef.current;
+    };
+
+    const resumeAudioContext = async (): Promise<boolean> => {
+      const ctx = ensureAudioContext();
+      if (!ctx) {
+        setAudioUnlocked(false);
+        return false;
+      }
+      if (ctx.state === 'suspended') {
+        try {
+          await ctx.resume();
+        } catch (error) {
+          console.warn('Failed to resume audio context', error);
+          setAudioUnlocked(false);
+          return false;
+        }
+      }
+      const running = ctx.state === 'running';
+      setAudioUnlocked(running);
+      return running;
     };
 
     const stopAudioPlayback = () => {
@@ -64,8 +86,13 @@ export function App() {
     const playAudioPayload = async (payload: TtsAudioPayload, generation: number) => {
       try {
         stopAudioPlayback();
+        if (!(await resumeAudioContext())) {
+          return;
+        }
         const ctx = ensureAudioContext();
-        await ctx.resume().catch(() => undefined);
+        if (!ctx) {
+          return;
+        }
         if (generation !== playbackGenerationRef.current) {
           return;
         }
@@ -292,6 +319,19 @@ export function App() {
     };
   }, []);
 
+  const handleUnlockAudio = async () => {
+    const ctx = audioContextRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioContextRef.current = ctx;
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (error) {
+        console.warn('Explicit audio unlock failed', error);
+      }
+    }
+    setAudioUnlocked(ctx.state === 'running');
+  };
+
   const handleRetryConnection = () => {
     setIsTestingConnection(true);
     const vscode = (window as any).acquireVsCodeApi?.();
@@ -323,14 +363,40 @@ export function App() {
         style={{
           position: 'absolute',
           left: '10vw',
-          top: '12px',
+          top: 12,
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
+          gap: 12,
           zIndex: 15,
         }}
       >
         <ModelSwitchButton />
+        {!audioUnlocked && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <AudioUnlockButton onUnlock={handleUnlockAudio} />
+            <div
+              style={{
+                padding: '8px 12px',
+                borderRadius: 8,
+                background: 'rgba(20, 20, 30, 0.82)',
+                color: '#fff',
+                fontSize: 11,
+                lineHeight: 1.4,
+                maxWidth: 240,
+                boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+                pointerEvents: 'none',
+              }}
+            >
+              Click to enable audio playback.
+            </div>
+          </div>
+        )}
       </div>
       <DebugPanel visible={showDebugPanel} />
       <SetupGuide

@@ -1,5 +1,6 @@
 import React from 'react';
 import { LAppDelegate } from '../viewer/lappdelegate';
+import { FloatingControlButton } from './FloatingControlButton';
 
 declare global {
   interface Window {
@@ -43,32 +44,13 @@ export function ModelSwitchButton() {
   };
 
   return (
-    <button
-      type="button"
+    <FloatingControlButton
       onClick={onClick}
+      ariaLabel="Switch character"
       title="Switch character"
-      aria-label="Switch character"
-      style={{
-        width: '34px',
-        height: '34px',
-        borderRadius: '9999px',
-        background: 'rgba(0, 0, 0, 0.55)',
-        color: '#fff',
-        border: 'none',
-        boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
-        backdropFilter: 'blur(2px)',
-        WebkitBackdropFilter: 'blur(2px)',
-        fontSize: '18px',
-        lineHeight: 1,
-        cursor: 'pointer',
-        userSelect: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
     >
       ⭐
-    </button>
+    </FloatingControlButton>
   );
 }
 
