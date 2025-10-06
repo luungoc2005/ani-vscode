@@ -113,10 +113,10 @@ export class AgentLoop {
     const cfg = vscode.workspace.getConfiguration('ani-vscode');
     const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
     const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
-  const fallbackPrompt = 'You are a helpful AI assistant. Reply in a friendly and concise manner.';
-  const characterCard = loadCharacterCard(this.currentCharacter, this.extensionPath);
-  const systemPrompt = characterCard?.systemPrompt || fallbackPrompt;
-  const voiceInstructions = characterCard?.voiceInstructions?.trim();
+    const fallbackPrompt = 'You are a helpful AI assistant. Reply in a friendly and concise manner.';
+    const characterCard = loadCharacterCard(this.currentCharacter, this.extensionPath);
+    const systemPrompt = characterCard?.systemPrompt || fallbackPrompt;
+    const voiceInstructions = characterCard?.voiceInstructions?.trim();
     const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
     const maxHistory = Math.max(1, cfg.get<number>('llm.maxHistory', 5));
 
