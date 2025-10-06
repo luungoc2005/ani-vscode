@@ -7,6 +7,7 @@ import { PluginContext, EnqueueMessageOptions } from './plugins/IPlugin';
 import { getCharacterSystemPrompt } from './CharacterLoader';
 import { TelemetryService } from './TelemetryService';
 import motionsMap from './motions_map.json';
+import { TtsService, TtsConfig } from './TtsService';
 
 /**
  * Main agent loop that processes messages from the queue or plugins
@@ -23,10 +24,13 @@ export class AgentLoop {
   private lastFilePath: string | null = null;
   private currentCharacter: string = 'Mao';
   private extensionPath: string = '';
+  private ttsService = new TtsService();
+  private logger?: vscode.OutputChannel;
 
-  constructor(messageQueue: MessageQueue, pluginManager: PluginManager) {
+  constructor(messageQueue: MessageQueue, pluginManager: PluginManager, logger?: vscode.OutputChannel) {
     this.messageQueue = messageQueue;
     this.pluginManager = pluginManager;
+    this.logger = logger;
   }
 
   /**
@@ -259,9 +263,50 @@ export class AgentLoop {
       }
 
       if (panel) {
-        // Append plugin text if available
-        const displayText = appendText ? text + appendText : text;
-        panel.webview.postMessage({ type: 'speech', text: displayText });
+  const { config: ttsConfig, playbackRate, pitchRatio } = this.getTtsOptions(cfg, baseUrl, apiKey);
+  let audioPayload: { mimeType: string; data: string; playbackRate: number; pitchRatio: number } | undefined;
+        let ttsErrorMessage: string | undefined;
+
+        if (!ttsConfig.enabled) {
+          this.logInfo('TTS disabled via settings; skipping synthesis.');
+        } else {
+          this.logInfo(
+            `Synthesizing speech with model "${ttsConfig.model}" (voice "${ttsConfig.voice}") via ${ttsConfig.baseUrl}`
+          );
+          const playbackRateLabel = Number.isFinite(playbackRate)
+            ? playbackRate.toFixed(2)
+            : String(playbackRate);
+          try {
+            const ttsResult = await this.ttsService.synthesize(text, ttsConfig);
+            if (ttsResult) {
+              audioPayload = {
+                mimeType: ttsResult.mimeType,
+                data: ttsResult.base64Audio,
+                playbackRate,
+                pitchRatio,
+              };
+              const approxBytes = Math.round((ttsResult.base64Audio.length * 3) / 4);
+              this.logInfo(
+                `Received TTS audio (~${approxBytes} bytes, playbackRate ${playbackRateLabel}, pitchRatio ${pitchRatio.toFixed(2)})`
+              );
+            } else {
+              this.logInfo('TTS returned no audio payload (possibly empty text).');
+            }
+          } catch (ttsError: unknown) {
+            this.logError('Failed to synthesize speech', ttsError);
+            ttsErrorMessage = this.formatError(ttsError) || 'Unknown TTS error';
+          }
+        }
+
+        if (panel) {
+          if (ttsErrorMessage) {
+            panel.webview.postMessage({ type: 'ttsError', message: ttsErrorMessage });
+          } else {
+            panel.webview.postMessage({ type: 'ttsError', clear: true });
+          }
+        }
+
+        panel.webview.postMessage({ type: 'speech', text, audio: audioPayload });
         
         // Send connection success message to hide setup guide if it's showing
         panel.webview.postMessage({ type: 'connectionSuccess' });
@@ -332,6 +377,74 @@ export class AgentLoop {
   resetChatHistory(): void {
     this.chatHistory = [];
     this.lastFilePath = null;
+  }
+
+  private logInfo(message: string): void {
+    this.logger?.appendLine(`[TTS] ${message}`);
+  }
+
+  private logError(message: string, err?: unknown): void {
+    if (!this.logger) {
+      return;
+    }
+    const detail = this.formatError(err);
+    this.logger.appendLine(`[TTS][error] ${message}${detail ? `: ${detail}` : ''}`);
+    if (err instanceof Error && err.stack) {
+      this.logger.appendLine(err.stack);
+    }
+  }
+
+  private formatError(err: unknown): string {
+    if (!err) {
+      return '';
+    }
+    if (err instanceof Error) {
+      return err.message;
+    }
+    if (typeof err === 'string') {
+      return err;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+
+  private getTtsOptions(
+    cfg: vscode.WorkspaceConfiguration,
+    fallbackBaseUrl: string,
+    fallbackApiKey: string
+  ): { config: TtsConfig; playbackRate: number; pitchRatio: number } {
+    const enabled = cfg.get<boolean>('tts.enabled', true);
+    let baseUrl = cfg.get<string>('tts.baseUrl', fallbackBaseUrl);
+    let apiKey = cfg.get<string>('tts.apiKey', fallbackApiKey);
+    const model = cfg.get<string>('tts.model', 'gpt-4o-mini-tts');
+    const voice = cfg.get<string>('tts.voice', 'alloy');
+    const playbackRate = cfg.get<number>('tts.playbackRate', 1.1);
+    const rawPitchRatio = cfg.get<number>('tts.pitchRatio', NaN);
+
+    const pitchRatio = Number.isFinite(rawPitchRatio) && rawPitchRatio > 0 ? rawPitchRatio : Math.max(playbackRate, 1.0);
+
+    if ((!apiKey || apiKey === 'dummy') && fallbackApiKey && fallbackApiKey !== 'dummy') {
+      apiKey = fallbackApiKey;
+    }
+
+    if (!baseUrl) {
+      baseUrl = fallbackBaseUrl;
+    }
+
+    return {
+      playbackRate,
+      pitchRatio,
+      config: {
+        enabled,
+        baseUrl,
+        apiKey,
+        model,
+        voice,
+      },
+    };
   }
 
   /**

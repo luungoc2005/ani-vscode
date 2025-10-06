@@ -77,6 +77,19 @@ export function bootCubism(container: HTMLElement) {
     }
   };
 
+  (window as any).startLipSyncFromUrl = (url: string) => {
+    try {
+      const delegate = LAppDelegate.getInstance();
+      if ((delegate as any)._subdelegates && (delegate as any)._subdelegates.getSize() > 0) {
+        const subdelegate = (delegate as any)._subdelegates.at(0);
+        const manager = subdelegate.getLive2DManager();
+        manager.startLipSyncFromUrl(url);
+      }
+    } catch (e) {
+      console.error('Error starting lip sync:', e);
+    }
+  };
+
   return () => LAppDelegate.releaseInstance();
 }
 

@@ -6,6 +6,7 @@ import { SetupGuide } from '../components/SetupGuide';
 import { bootCubism } from '../viewer/boot';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { ModelSwitchButton } from '../components/ModelSwitchButton';
+import { prepareAudioForPlayback, type TtsAudioPayload } from '../audio/ttsAudio';
 
 declare global {
   interface Window {
@@ -13,11 +14,16 @@ declare global {
       text: string,
       options?: { durationMs?: number; speedMsPerChar?: number }
     ) => void;
+    startLipSyncFromUrl?: (url: string) => void;
   }
 }
 
+
+
 export function App() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const [speechText, setSpeechText] = useState('');
   const [speechOptions, setSpeechOptions] = useState<{ durationMs?: number; speedMsPerChar?: number } | undefined>(undefined);
   const [dismissSpeech, setDismissSpeech] = useState(false);
@@ -26,12 +32,56 @@ export function App() {
   const [showSetupGuide, setShowSetupGuide] = useState(true); // Show initially while testing
   const [setupErrorMessage, setSetupErrorMessage] = useState<string | undefined>(undefined);
   const [isTestingConnection, setIsTestingConnection] = useState(true); // Start with testing state
+  const [ttsError, setTtsError] = useState<string | null>(null);
 
   const copyTextToClipboard = async (_text: string) => {};
 
   useEffect(() => {
     if (!containerRef.current) return;
     const dispose = bootCubism(containerRef.current);
+
+    const ensureAudioContext = () => {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      return audioContextRef.current;
+    };
+
+    const stopAudioPlayback = () => {
+      try {
+        sourceRef.current?.stop();
+      } catch {}
+      sourceRef.current?.disconnect();
+      sourceRef.current = null;
+    };
+
+    const playAudioPayload = async (payload: TtsAudioPayload) => {
+      try {
+        stopAudioPlayback();
+        const ctx = ensureAudioContext();
+        await ctx.resume().catch(() => undefined);
+        const processed = await prepareAudioForPlayback(ctx, payload);
+
+        const dataUrl = `data:${processed.mimeType};base64,${processed.lipSyncBase64}`;
+        window.startLipSyncFromUrl?.(dataUrl);
+
+        const source = ctx.createBufferSource();
+        source.buffer = processed.playbackBuffer;
+        source.playbackRate.value = 1;
+
+        source.connect(ctx.destination);
+
+        sourceRef.current = source;
+        source.addEventListener('ended', () => {
+          stopAudioPlayback();
+        });
+
+        source.start();
+      } catch (error) {
+        console.error('Failed to play TTS audio', error);
+        stopAudioPlayback();
+      }
+    };
 
     // Two-mode gaze control: caret-follow and mouse-follow with auto-switching
     let mode: 'mouse' | 'caret' = 'mouse';
@@ -46,6 +96,7 @@ export function App() {
       setSpeechText(text);
       setSpeechOptions(options);
       setDismissSpeech(false);
+      setTtsError(null);
     };
 
     // Expose global function for programmatic control
@@ -139,9 +190,21 @@ export function App() {
           mode = 'mouse';
         }, 1500);
       } else if (data.type === 'speech' && typeof data.text === 'string') {
+        stopAudioPlayback();
         showSpeech(data.text, data.options);
+        if (data.audio && typeof data.audio.data === 'string') {
+          playAudioPayload(data.audio);
+        }
       } else if (data.type === 'dismissSpeech') {
+        stopAudioPlayback();
         setDismissSpeech(true);
+      } else if (data.type === 'ttsError') {
+        if (data.clear) {
+          setTtsError(null);
+        } else if (typeof data.message === 'string') {
+          setTtsError(data.message);
+          console.warn('Ani VSCode TTS error:', data.message);
+        }
       } else if (data.type === 'thinking' && typeof data.on === 'boolean') {
         if (data.on) startThinking();
         else stopThinking();
@@ -199,6 +262,7 @@ export function App() {
     // showSpeech('Hello World');
 
     return () => {
+      stopAudioPlayback();
       dispose?.();
       window.removeEventListener('message', onMessage);
       document.removeEventListener('pointermove', onPointerMove);
@@ -237,7 +301,19 @@ export function App() {
           }}
         />
       )}
-      <ModelSwitchButton />
+      <div
+        style={{
+          position: 'absolute',
+          left: '10vw',
+          top: '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          zIndex: 15,
+        }}
+      >
+        <ModelSwitchButton />
+      </div>
       <DebugPanel visible={showDebugPanel} />
       <SetupGuide
         visible={showSetupGuide}
@@ -246,6 +322,41 @@ export function App() {
         onDismiss={handleDismissSetupGuide}
         isTesting={isTestingConnection}
       />
+      {ttsError && !showSetupGuide && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 16,
+            bottom: 16,
+            maxWidth: 320,
+            padding: '12px 16px',
+            borderRadius: 8,
+            background: 'rgba(128,0,0,0.88)',
+            color: '#fff',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
+            fontSize: 12,
+            lineHeight: 1.4,
+            zIndex: 20,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Speech playback unavailable</div>
+          <div>{ttsError}</div>
+          <button
+            onClick={() => setTtsError(null)}
+            style={{
+              marginTop: 8,
+              background: 'rgba(255,255,255,0.15)',
+              color: '#fff',
+              border: 'none',
+              padding: '4px 10px',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
     </div>
   );
 }

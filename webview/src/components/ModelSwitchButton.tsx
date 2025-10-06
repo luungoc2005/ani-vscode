@@ -49,9 +49,6 @@ export function ModelSwitchButton() {
       title="Switch character"
       aria-label="Switch character"
       style={{
-        position: 'absolute',
-        left: '10vw',
-        top: '12px',
         width: '34px',
         height: '34px',
         borderRadius: '9999px',
@@ -64,7 +61,10 @@ export function ModelSwitchButton() {
         fontSize: '18px',
         lineHeight: 1,
         cursor: 'pointer',
-        userSelect: 'none'
+        userSelect: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
       ⭐

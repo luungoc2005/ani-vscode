@@ -1013,6 +1013,17 @@ export class LAppModel extends CubismUserModel {
     this._subdelegate = subdelegate;
   }
 
+  public startLipSyncFromUrl(path: string): void {
+    if (!path) {
+      return;
+    }
+    try {
+      this._wavFileHandler.start(path);
+    } catch (error) {
+      console.warn('Failed to start lip sync from url', error);
+    }
+  }
+
   /**
    * コンストラクタ
    */
