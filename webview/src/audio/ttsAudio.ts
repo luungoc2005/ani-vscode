@@ -106,18 +106,17 @@ const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRati
   const filter = new SimpleFilter(source, soundTouch);
 
   const channelCount = Math.max(buffer.numberOfChannels, 1);
-  const channelsToCollect = Math.min(channelCount, 2);
-  const collected: number[][] = Array.from({ length: channelsToCollect || 1 }, () => [] as number[]);
-  const interleaved = new Float32Array(PITCH_CHUNK_SIZE * 2);
+  const channelsToCollect = Math.max(Math.min(channelCount, 2), 1);
+  const collected: number[][] = Array.from({ length: channelsToCollect }, () => [] as number[]);
+  const interleaved = new Float32Array(PITCH_CHUNK_SIZE * channelsToCollect);
 
   let framesExtracted = 0;
   do {
     framesExtracted = filter.extract(interleaved, PITCH_CHUNK_SIZE);
     for (let i = 0; i < framesExtracted; i++) {
-      const left = interleaved[i * 2];
-      collected[0].push(left);
-      if (channelsToCollect > 1) {
-        collected[1].push(interleaved[i * 2 + 1]);
+      for (let channel = 0; channel < channelsToCollect; channel++) {
+        const sample = interleaved[i * channelsToCollect + channel] ?? 0;
+        collected[channel].push(sample);
       }
     }
   } while (framesExtracted > 0);
