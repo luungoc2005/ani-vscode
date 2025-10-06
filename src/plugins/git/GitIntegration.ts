@@ -53,18 +53,51 @@ async function handlePush(
   }
 }
 
+type OperationEventWithRepository = RepositoryOperationEvent & { readonly repository?: Repository };
+
+function subscribeToPushEvents(
+  repository: Repository,
+  gitApi: GitAPI | null,
+  listener: (event: OperationEventWithRepository) => void
+): vscode.Disposable | null {
+  const repoEvent = repository.onDidRunOperation;
+  if (typeof repoEvent === 'function') {
+    return repoEvent(listener);
+  }
+
+  const apiEvent = gitApi?.onDidRunOperation;
+  if (typeof apiEvent === 'function') {
+    return apiEvent((event: OperationEventWithRepository) => {
+      if (!event.repository || event.repository === repository) {
+        listener(event);
+      }
+    });
+  }
+
+  return null;
+}
+
 function watchRepository(
   repository: Repository,
+  gitApi: GitAPI | null,
   disposables: vscode.Disposable[],
   codeReviewPlugin: CodeReviewPlugin,
   agentLoop: AgentLoop
 ): void {
-  const disposable = repository.onDidRunOperation((event: RepositoryOperationEvent) => {
+  const disposable = subscribeToPushEvents(repository, gitApi, (event: OperationEventWithRepository) => {
     if (event.operation === Operation.Push && !event.hasErrored) {
       void handlePush(repository, codeReviewPlugin, agentLoop);
     }
   });
-  disposables.push(disposable);
+
+  if (disposable) {
+    disposables.push(disposable);
+  } else {
+    console.warn(
+      '[ani-vscode] Git repository does not expose onDidRunOperation; push compliment notifications disabled for',
+      repository.rootUri.toString()
+    );
+  }
 }
 
 export async function registerGitPushListener(
@@ -79,11 +112,11 @@ export async function registerGitPushListener(
   const disposables: vscode.Disposable[] = [];
 
   gitApi.repositories.forEach((repo: Repository) => {
-    watchRepository(repo, disposables, codeReviewPlugin, agentLoop);
+    watchRepository(repo, gitApi, disposables, codeReviewPlugin, agentLoop);
   });
 
   const openRepoDisposable = gitApi.onDidOpenRepository((repo: Repository) => {
-    watchRepository(repo, disposables, codeReviewPlugin, agentLoop);
+    watchRepository(repo, gitApi, disposables, codeReviewPlugin, agentLoop);
   });
   disposables.push(openRepoDisposable);
 

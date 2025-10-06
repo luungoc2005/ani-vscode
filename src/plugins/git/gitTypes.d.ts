@@ -10,11 +10,12 @@ declare module 'vscode.git' {
   export interface API {
     readonly repositories: readonly Repository[];
     readonly onDidOpenRepository: vscode.Event<Repository>;
+    readonly onDidRunOperation?: vscode.Event<RepositoryOperationEvent & { readonly repository: Repository }>;
   }
 
   export interface Repository {
     readonly rootUri: vscode.Uri;
-    readonly onDidRunOperation: vscode.Event<RepositoryOperationEvent>;
+    readonly onDidRunOperation?: vscode.Event<RepositoryOperationEvent>;
     log(options?: LogOptions): Promise<Commit[]>;
   }
 
