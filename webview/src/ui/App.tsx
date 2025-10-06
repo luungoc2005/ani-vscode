@@ -24,6 +24,7 @@ export function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const playbackGenerationRef = useRef(0);
   const [speechText, setSpeechText] = useState('');
   const [speechOptions, setSpeechOptions] = useState<{ durationMs?: number; speedMsPerChar?: number } | undefined>(undefined);
   const [dismissSpeech, setDismissSpeech] = useState(false);
@@ -55,12 +56,23 @@ export function App() {
       sourceRef.current = null;
     };
 
-    const playAudioPayload = async (payload: TtsAudioPayload) => {
+    const cancelAudioPlayback = () => {
+      playbackGenerationRef.current += 1;
+      stopAudioPlayback();
+    };
+
+    const playAudioPayload = async (payload: TtsAudioPayload, generation: number) => {
       try {
         stopAudioPlayback();
         const ctx = ensureAudioContext();
         await ctx.resume().catch(() => undefined);
+        if (generation !== playbackGenerationRef.current) {
+          return;
+        }
         const processed = await prepareAudioForPlayback(ctx, payload);
+        if (generation !== playbackGenerationRef.current) {
+          return;
+        }
 
         const dataUrl = `data:${processed.mimeType};base64,${processed.lipSyncBase64}`;
         window.startLipSyncFromUrl?.(dataUrl);
@@ -75,6 +87,11 @@ export function App() {
         source.addEventListener('ended', () => {
           stopAudioPlayback();
         });
+
+        if (generation !== playbackGenerationRef.current) {
+          stopAudioPlayback();
+          return;
+        }
 
         source.start();
       } catch (error) {
@@ -190,13 +207,14 @@ export function App() {
           mode = 'mouse';
         }, 1500);
       } else if (data.type === 'speech' && typeof data.text === 'string') {
-        stopAudioPlayback();
+        cancelAudioPlayback();
+        const currentGeneration = playbackGenerationRef.current;
         showSpeech(data.text, data.options);
         if (data.audio && typeof data.audio.data === 'string') {
-          playAudioPayload(data.audio);
+          void playAudioPayload(data.audio, currentGeneration);
         }
       } else if (data.type === 'dismissSpeech') {
-        stopAudioPlayback();
+        cancelAudioPlayback();
         setDismissSpeech(true);
       } else if (data.type === 'ttsError') {
         if (data.clear) {
@@ -262,7 +280,7 @@ export function App() {
     // showSpeech('Hello World');
 
     return () => {
-      stopAudioPlayback();
+      cancelAudioPlayback();
       dispose?.();
       window.removeEventListener('message', onMessage);
       document.removeEventListener('pointermove', onPointerMove);

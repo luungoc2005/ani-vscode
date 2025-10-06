@@ -98,14 +98,14 @@
           "type": "number",
           "default": 1.45,
           "minimum": 0.5,
-          "maximum": 3,
+          "maximum": 2,
           "description": "Pitch multiplier applied after synthesis (1.0 = original pitch). Higher values sound brighter."
         },
         "ani-vscode.tts.playbackRate": {
           "type": "number",
           "default": 1,
           "minimum": 0.5,
-          "maximum": 2,
+          "maximum": 1.1,
           "description": "Playback speed multiplier. Leave at 1.0 to keep natural timing."
         },
         "ani-vscode.plugins.codeReview.enabled": {
