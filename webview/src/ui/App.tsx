@@ -7,6 +7,7 @@ import { bootCubism } from '../viewer/boot';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { ModelSwitchButton } from '../components/ModelSwitchButton';
 import { AudioUnlockButton } from '../components/AudioUnlockButton';
+import { getVsCodeApi } from '../vscode';
 import { prepareAudioForPlayback, type TtsAudioPayload } from '../audio/ttsAudio';
 
 declare global {
@@ -36,6 +37,7 @@ export function App() {
   const [isTestingConnection, setIsTestingConnection] = useState(true); // Start with testing state
   const [ttsError, setTtsError] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const vscodeApiRef = useRef(getVsCodeApi());
 
   const copyTextToClipboard = async (_text: string) => {};
 
@@ -331,6 +333,14 @@ export function App() {
     }
     setAudioUnlocked(ctx.state === 'running');
   };
+
+  useEffect(() => {
+    const vscode = vscodeApiRef.current ?? getVsCodeApi();
+    if (vscode) {
+      vscodeApiRef.current = vscode;
+      vscode.postMessage({ type: 'audioCapability', canPlay: audioUnlocked });
+    }
+  }, [audioUnlocked]);
 
   const handleRetryConnection = () => {
     setIsTestingConnection(true);

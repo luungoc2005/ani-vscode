@@ -307,6 +307,8 @@ export function activate(context: vscode.ExtensionContext) {
             }, 500);
           }
         })();
+      } else if (message.type === 'audioCapability') {
+        agentLoop.setAudioCapability(Boolean(message.canPlay));
       }
     });
 

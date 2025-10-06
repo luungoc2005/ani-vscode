@@ -4,6 +4,7 @@ import * as path from 'path';
 export interface CharacterCard {
   name: string;
   systemPrompt: string;
+  voiceInstructions?: string;
 }
 
 /**
@@ -53,6 +54,7 @@ export function loadCharacterCard(characterName: string, extensionPath: string):
     return {
       name: frontmatter.name || characterName,
       systemPrompt: body,
+      voiceInstructions: frontmatter.voiceInstructions,
     };
   } catch (error) {
     console.error(`Error loading character card for ${characterName}:`, error);
@@ -66,6 +68,12 @@ export function loadCharacterCard(characterName: string, extensionPath: string):
 export function getCharacterSystemPrompt(characterName: string, extensionPath: string, fallbackPrompt: string): string {
   const card = loadCharacterCard(characterName, extensionPath);
   return card?.systemPrompt || fallbackPrompt;
+}
+
+export function getCharacterVoiceInstructions(characterName: string, extensionPath: string): string | undefined {
+  const card = loadCharacterCard(characterName, extensionPath);
+  const instructions = card?.voiceInstructions?.trim();
+  return instructions ? instructions : undefined;
 }
 
 /**

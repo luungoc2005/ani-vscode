@@ -4,7 +4,7 @@ import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages
 import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
 import { PluginContext, EnqueueMessageOptions } from './plugins/IPlugin';
-import { getCharacterSystemPrompt } from './CharacterLoader';
+import { loadCharacterCard } from './CharacterLoader';
 import { TelemetryService } from './TelemetryService';
 import motionsMap from './motions_map.json';
 import { TtsService, TtsConfig } from './TtsService';
@@ -26,6 +26,7 @@ export class AgentLoop {
   private extensionPath: string = '';
   private ttsService = new TtsService();
   private logger?: vscode.OutputChannel;
+  private hasAudioCapability = false;
 
   constructor(messageQueue: MessageQueue, pluginManager: PluginManager, logger?: vscode.OutputChannel) {
     this.messageQueue = messageQueue;
@@ -60,6 +61,14 @@ export class AgentLoop {
    */
   getCurrentCharacter(): string {
     return this.currentCharacter;
+  }
+
+  setAudioCapability(canPlay: boolean): void {
+    if (this.hasAudioCapability === canPlay) {
+      return;
+    }
+    this.hasAudioCapability = canPlay;
+    this.logInfo(`Audio capability ${canPlay ? 'enabled' : 'disabled'} by webview.`);
   }
 
   /**
@@ -104,8 +113,10 @@ export class AgentLoop {
     const cfg = vscode.workspace.getConfiguration('ani-vscode');
     const baseUrl = cfg.get<string>('llm.baseUrl', 'https://api.openai.com/v1');
     const apiKey = cfg.get<string>('llm.apiKey', 'dummy');
-    const fallbackPrompt = 'You are a helpful AI assistant. Reply in a friendly and concise manner.';
-    const systemPrompt = getCharacterSystemPrompt(this.currentCharacter, this.extensionPath, fallbackPrompt);
+  const fallbackPrompt = 'You are a helpful AI assistant. Reply in a friendly and concise manner.';
+  const characterCard = loadCharacterCard(this.currentCharacter, this.extensionPath);
+  const systemPrompt = characterCard?.systemPrompt || fallbackPrompt;
+  const voiceInstructions = characterCard?.voiceInstructions?.trim();
     const minIntervalSec = Math.max(10, cfg.get<number>('llm.minIntervalSeconds', 10));
     const maxHistory = Math.max(1, cfg.get<number>('llm.maxHistory', 5));
 
@@ -263,12 +274,14 @@ export class AgentLoop {
       }
 
       if (panel) {
-  const { config: ttsConfig, playbackRate, pitchRatio } = this.getTtsOptions(cfg, baseUrl, apiKey);
-  let audioPayload: { mimeType: string; data: string; playbackRate: number; pitchRatio: number } | undefined;
+        const { config: ttsConfig, playbackRate, pitchRatio } = this.getTtsOptions(cfg, baseUrl, apiKey);
+        let audioPayload: { mimeType: string; data: string; playbackRate: number; pitchRatio: number } | undefined;
         let ttsErrorMessage: string | undefined;
 
         if (!ttsConfig.enabled) {
           this.logInfo('TTS disabled via settings; skipping synthesis.');
+        } else if (!this.hasAudioCapability) {
+          this.logInfo('Skipping speech synthesis because audio is locked in the webview.');
         } else {
           this.logInfo(
             `Synthesizing speech with model "${ttsConfig.model}" (voice "${ttsConfig.voice}") via ${ttsConfig.baseUrl}`
@@ -276,8 +289,13 @@ export class AgentLoop {
           const playbackRateLabel = Number.isFinite(playbackRate)
             ? playbackRate.toFixed(2)
             : String(playbackRate);
+          if (voiceInstructions) {
+            this.logInfo('Applying character voice instructions to TTS request.');
+          }
           try {
-            const ttsResult = await this.ttsService.synthesize(text, ttsConfig);
+            const ttsResult = await this.ttsService.synthesize(text, ttsConfig, {
+              voiceInstructions,
+            });
             if (ttsResult) {
               audioPayload = {
                 mimeType: ttsResult.mimeType,

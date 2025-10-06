@@ -13,8 +13,12 @@ export interface TtsResult {
   base64Audio: string;
 }
 
+export interface TtsSynthesisOptions {
+  voiceInstructions?: string;
+}
+
 export class TtsService {
-  async synthesize(text: string, config: TtsConfig): Promise<TtsResult | null> {
+  async synthesize(text: string, config: TtsConfig, options?: TtsSynthesisOptions): Promise<TtsResult | null> {
     if (!config.enabled) {
       return null;
     }
@@ -38,6 +42,19 @@ export class TtsService {
 
     const endpoint = this.buildEndpoint(config.baseUrl);
 
+    const instructions = options?.voiceInstructions?.trim();
+
+    const requestBody: Record<string, unknown> = {
+      model: config.model,
+      input: trimmed,
+      voice: config.voice,
+      response_format: 'wav',
+    };
+
+    if (instructions) {
+      requestBody.instructions = instructions;
+    }
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -45,12 +62,7 @@ export class TtsService {
         Accept: 'audio/wav',
         Authorization: `Bearer ${config.apiKey}`,
       },
-      body: JSON.stringify({
-        model: config.model,
-        input: trimmed,
-        voice: config.voice,
-        response_format: 'wav',
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
