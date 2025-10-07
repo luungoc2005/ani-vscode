@@ -11,34 +11,34 @@ declare global {
 let cachedApi: VsCodeApi | null | undefined;
 
 export function getVsCodeApi(): VsCodeApi | null {
-  if (cachedApi !== undefined) {
-    return cachedApi ?? null;
-  }
-
-  if (typeof window === 'undefined') {
-    cachedApi = null;
+  if (cachedApi) {
     return cachedApi;
   }
 
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
   if (window.__aniVsCodeApi) {
-    cachedApi = window.__aniVsCodeApi ?? null;
+    cachedApi = window.__aniVsCodeApi;
     return cachedApi;
   }
 
   const acquire = (window as any).acquireVsCodeApi;
   if (typeof acquire !== 'function') {
-    cachedApi = null;
-    window.__aniVsCodeApi = cachedApi;
-    return cachedApi;
+    return null;
   }
 
   try {
-    cachedApi = acquire();
+    const api = acquire();
+    if (api) {
+      cachedApi = api;
+      window.__aniVsCodeApi = api;
+      return api;
+    }
   } catch (error) {
     console.error('Failed to acquire VS Code API', error);
-    cachedApi = null;
   }
 
-  window.__aniVsCodeApi = cachedApi;
-  return cachedApi ?? null;
+  return null;
 }

@@ -1,17 +1,9 @@
 import React from 'react';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { FloatingControlButton } from './FloatingControlButton';
+import { getVsCodeApi } from '../vscode';
 
-declare global {
-  interface Window {
-    acquireVsCodeApi?: () => {
-      postMessage: (message: any) => void;
-    };
-  }
-}
-
-// Acquire vscode API once at module load time
-const vscodeApi = typeof window !== 'undefined' && window.acquireVsCodeApi ? window.acquireVsCodeApi() : null;
+const vscodeApi = getVsCodeApi();
 
 export function ModelSwitchButton() {
   const onClick = () => {

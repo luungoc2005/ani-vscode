@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SpeechBubble } from '../components/SpeechBubble';
 import { ThinkingDots } from '../components/ThinkingDots';
 import { DebugPanel } from '../components/DebugPanel';
@@ -39,6 +39,21 @@ export function App() {
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const vscodeApiRef = useRef(getVsCodeApi());
 
+  const getOrAcquireVsCodeApi = useCallback(() => {
+    const api = vscodeApiRef.current ?? getVsCodeApi();
+    if (api) {
+      vscodeApiRef.current = api;
+    }
+    return api;
+  }, []);
+
+  const postAudioCapability = useCallback((canPlay: boolean) => {
+    const vscode = getOrAcquireVsCodeApi();
+    if (vscode) {
+      vscode.postMessage({ type: 'audioCapability', canPlay });
+    }
+  }, [getOrAcquireVsCodeApi]);
+
   const copyTextToClipboard = async (_text: string) => {};
 
   useEffect(() => {
@@ -56,6 +71,7 @@ export function App() {
       const ctx = ensureAudioContext();
       if (!ctx) {
         setAudioUnlocked(false);
+        postAudioCapability(false);
         return false;
       }
       if (ctx.state === 'suspended') {
@@ -64,11 +80,13 @@ export function App() {
         } catch (error) {
           console.warn('Failed to resume audio context', error);
           setAudioUnlocked(false);
+          postAudioCapability(false);
           return false;
         }
       }
       const running = ctx.state === 'running';
       setAudioUnlocked(running);
+      postAudioCapability(running);
       return running;
     };
 
@@ -265,7 +283,7 @@ export function App() {
         // Respond with current model name
         if ((window as any).getAvailableMotions) {
           const motionsData = (window as any).getAvailableMotions();
-          const vscode = (window as any).acquireVsCodeApi?.();
+          const vscode = getOrAcquireVsCodeApi();
           if (vscode) {
             vscode.postMessage({
               type: 'currentModel',
@@ -319,7 +337,7 @@ export function App() {
       // Clean up global function
       window.setSpeechBubble = undefined;
     };
-  }, []);
+  }, [postAudioCapability]);
 
   const handleUnlockAudio = async () => {
     const ctx = audioContextRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -331,20 +349,18 @@ export function App() {
         console.warn('Explicit audio unlock failed', error);
       }
     }
-    setAudioUnlocked(ctx.state === 'running');
+    const canPlay = ctx.state === 'running';
+    setAudioUnlocked(canPlay);
+    postAudioCapability(canPlay);
   };
 
   useEffect(() => {
-    const vscode = vscodeApiRef.current ?? getVsCodeApi();
-    if (vscode) {
-      vscodeApiRef.current = vscode;
-      vscode.postMessage({ type: 'audioCapability', canPlay: audioUnlocked });
-    }
-  }, [audioUnlocked]);
+    postAudioCapability(audioUnlocked);
+  }, [audioUnlocked, postAudioCapability]);
 
   const handleRetryConnection = () => {
     setIsTestingConnection(true);
-    const vscode = (window as any).acquireVsCodeApi?.();
+    const vscode = getOrAcquireVsCodeApi();
     if (vscode) {
       vscode.postMessage({ type: 'retryConnection' });
     }

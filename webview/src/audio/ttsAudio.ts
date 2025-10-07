@@ -35,54 +35,85 @@ const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
 };
 
 const audioBufferToWavArrayBuffer = (buffer: AudioBuffer): ArrayBuffer => {
-  const numChannels = Math.max(buffer.numberOfChannels, 1);
+  const channels = Math.max(1, buffer.numberOfChannels);
   const sampleRate = buffer.sampleRate;
-  const frameCount = buffer.length;
+  const interleaved = interleaveChannels(buffer, channels);
+
   const bytesPerSample = 2;
-  const blockAlign = numChannels * bytesPerSample;
-  const dataSize = frameCount * blockAlign;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = interleaved.length * bytesPerSample;
   const bufferLength = 44 + dataSize;
   const arrayBuffer = new ArrayBuffer(bufferLength);
   const view = new DataView(arrayBuffer);
 
-  const writeString = (offset: number, value: string) => {
-    for (let i = 0; i < value.length; i++) {
-      view.setUint8(offset + i, value.charCodeAt(i));
-    }
-  };
-
-  writeString(0, 'RIFF');
+  writeString(view, 0, 'RIFF');
   view.setUint32(4, 36 + dataSize, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true); // Subchunk1Size
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, channels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * blockAlign, true);
   view.setUint16(32, blockAlign, true);
   view.setUint16(34, bytesPerSample * 8, true);
-  writeString(36, 'data');
+  writeString(view, 36, 'data');
   view.setUint32(40, dataSize, true);
 
-  const sourceChannels: Float32Array[] =
-    buffer.numberOfChannels > 0
-      ? Array.from({ length: buffer.numberOfChannels }, (_, channel) => buffer.getChannelData(channel))
-      : [new Float32Array(frameCount)];
+  const writtenSamples = floatTo16BitPCM(view, 44, interleaved);
+  const actualDataSize = writtenSamples * bytesPerSample;
 
-  let offset = 44;
-  for (let frame = 0; frame < frameCount; frame++) {
-    for (let channel = 0; channel < numChannels; channel++) {
-      const data = sourceChannels[Math.min(channel, sourceChannels.length - 1)];
-      let sample = data[frame] ?? 0;
-      sample = Math.max(-1, Math.min(1, sample));
-      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-      view.setInt16(offset, intSample, true);
-      offset += bytesPerSample;
+  if (actualDataSize !== dataSize) {
+    view.setUint32(4, 36 + actualDataSize, true);
+    view.setUint32(40, actualDataSize, true);
+    const trimmedLength = 44 + actualDataSize;
+    if (trimmedLength < arrayBuffer.byteLength) {
+      return arrayBuffer.slice(0, trimmedLength);
     }
   }
 
   return arrayBuffer;
+};
+
+const interleaveChannels = (buffer: AudioBuffer, channels: number): Float32Array => {
+  const frameCount = buffer.length;
+  const result = new Float32Array(frameCount * channels);
+  const channelData: Float32Array[] = Array.from({ length: channels }, (_, index) => {
+    if (index < buffer.numberOfChannels) {
+      return buffer.getChannelData(index);
+    }
+    return new Float32Array(frameCount);
+  });
+
+  let writeIndex = 0;
+  for (let frame = 0; frame < frameCount; frame++) {
+    for (let channel = 0; channel < channels; channel++) {
+      result[writeIndex++] = channelData[channel][frame] ?? 0;
+    }
+  }
+
+  return result;
+};
+
+const writeString = (view: DataView, offset: number, value: string) => {
+  for (let i = 0; i < value.length; i++) {
+    view.setUint8(offset + i, value.charCodeAt(i));
+  }
+};
+
+const floatTo16BitPCM = (view: DataView, offset: number, samples: Float32Array): number => {
+  const byteLength = view.byteLength;
+  let written = 0;
+  for (let i = 0; i < samples.length && offset + 1 < byteLength; i++, offset += 2) {
+    let sample = samples[i];
+    sample = Math.max(-1, Math.min(1, sample || 0));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    written++;
+  }
+  if (written < samples.length) {
+    console.warn('Truncated WAV encoding due to buffer bounds.');
+  }
+  return written;
 };
 
 const arrayBufferToBase64 = (input: ArrayBuffer): string => {
