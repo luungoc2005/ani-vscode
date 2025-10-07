@@ -256,8 +256,8 @@ export class AgentLoop {
           ? aiMsg.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('')
           : String(aiMsg.content ?? '');
       text = this.stripCodeBlockTags(text);
-  text = this.stripThinkTags(text);
-  text = this.stripTrailingLlmArtifacts(text);
+      text = this.stripThinkTags(text);
+      text = this.stripTrailingLlmArtifacts(text);
 
       // Notify the plugin of the AI response if it has an onResponse method
       if (triggeringPlugin && typeof triggeringPlugin.onResponse === 'function') {
@@ -324,7 +324,8 @@ export class AgentLoop {
           }
         }
 
-        panel.webview.postMessage({ type: 'speech', text, audio: audioPayload });
+        const displayText = appendText ? `${text}\n\n${appendText}` : text;
+        panel.webview.postMessage({ type: 'speech', text: displayText, audio: audioPayload });
         
         // Send connection success message to hide setup guide if it's showing
         panel.webview.postMessage({ type: 'connectionSuccess' });

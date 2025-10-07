@@ -1,4 +1,5 @@
 import { SimpleFilter, SoundTouch, WebAudioBufferSource } from 'soundtouchjs';
+import toWav from 'audiobuffer-to-wav';
 
 export const DEFAULT_PITCH_RATIO = 1.5;
 const MIN_PITCH_DELTA = 0.005;
@@ -34,87 +35,7 @@ const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
   return bytes.buffer;
 };
 
-const audioBufferToWavArrayBuffer = (buffer: AudioBuffer): ArrayBuffer => {
-  const channels = Math.max(1, buffer.numberOfChannels);
-  const sampleRate = buffer.sampleRate;
-  const interleaved = interleaveChannels(buffer, channels);
-
-  const bytesPerSample = 2;
-  const blockAlign = channels * bytesPerSample;
-  const dataSize = interleaved.length * bytesPerSample;
-  const bufferLength = 44 + dataSize;
-  const arrayBuffer = new ArrayBuffer(bufferLength);
-  const view = new DataView(arrayBuffer);
-
-  writeString(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
-  view.setUint32(16, 16, true); // Subchunk1Size
-  view.setUint16(20, 1, true); // PCM format
-  view.setUint16(22, channels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * blockAlign, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bytesPerSample * 8, true);
-  writeString(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  const writtenSamples = floatTo16BitPCM(view, 44, interleaved);
-  const actualDataSize = writtenSamples * bytesPerSample;
-
-  if (actualDataSize !== dataSize) {
-    view.setUint32(4, 36 + actualDataSize, true);
-    view.setUint32(40, actualDataSize, true);
-    const trimmedLength = 44 + actualDataSize;
-    if (trimmedLength < arrayBuffer.byteLength) {
-      return arrayBuffer.slice(0, trimmedLength);
-    }
-  }
-
-  return arrayBuffer;
-};
-
-const interleaveChannels = (buffer: AudioBuffer, channels: number): Float32Array => {
-  const frameCount = buffer.length;
-  const result = new Float32Array(frameCount * channels);
-  const channelData: Float32Array[] = Array.from({ length: channels }, (_, index) => {
-    if (index < buffer.numberOfChannels) {
-      return buffer.getChannelData(index);
-    }
-    return new Float32Array(frameCount);
-  });
-
-  let writeIndex = 0;
-  for (let frame = 0; frame < frameCount; frame++) {
-    for (let channel = 0; channel < channels; channel++) {
-      result[writeIndex++] = channelData[channel][frame] ?? 0;
-    }
-  }
-
-  return result;
-};
-
-const writeString = (view: DataView, offset: number, value: string) => {
-  for (let i = 0; i < value.length; i++) {
-    view.setUint8(offset + i, value.charCodeAt(i));
-  }
-};
-
-const floatTo16BitPCM = (view: DataView, offset: number, samples: Float32Array): number => {
-  const byteLength = view.byteLength;
-  let written = 0;
-  for (let i = 0; i < samples.length && offset + 1 < byteLength; i++, offset += 2) {
-    let sample = samples[i];
-    sample = Math.max(-1, Math.min(1, sample || 0));
-    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-    written++;
-  }
-  if (written < samples.length) {
-    console.warn('Truncated WAV encoding due to buffer bounds.');
-  }
-  return written;
-};
+const audioBufferToWavArrayBuffer = (buffer: AudioBuffer): ArrayBuffer => toWav(buffer);
 
 const arrayBufferToBase64 = (input: ArrayBuffer): string => {
   const bytes = new Uint8Array(input);
@@ -136,17 +57,17 @@ const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRati
   const source = new WebAudioBufferSource(buffer);
   const filter = new SimpleFilter(source, soundTouch);
 
-  const channelCount = Math.max(buffer.numberOfChannels, 1);
-  const channelsToCollect = Math.max(Math.min(channelCount, 2), 1);
-  const collected: number[][] = Array.from({ length: channelsToCollect }, () => [] as number[]);
-  const interleaved = new Float32Array(PITCH_CHUNK_SIZE * channelsToCollect);
+  const inputChannelCount = Math.max(buffer.numberOfChannels, 1);
+  const filterChannels = 2; // SimpleFilter emits stereo samples regardless of input
+  const collected: number[][] = Array.from({ length: filterChannels }, () => [] as number[]);
+  const interleaved = new Float32Array(PITCH_CHUNK_SIZE * filterChannels);
 
   let framesExtracted = 0;
   do {
     framesExtracted = filter.extract(interleaved, PITCH_CHUNK_SIZE);
     for (let i = 0; i < framesExtracted; i++) {
-      for (let channel = 0; channel < channelsToCollect; channel++) {
-        const sample = interleaved[i * channelsToCollect + channel] ?? 0;
+      for (let channel = 0; channel < filterChannels; channel++) {
+        const sample = interleaved[i * filterChannels + channel] ?? 0;
         collected[channel].push(sample);
       }
     }
@@ -157,25 +78,31 @@ const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRati
     return buffer;
   }
 
-  const result = ctx.createBuffer(channelCount, frameCount, buffer.sampleRate);
-  result.getChannelData(0).set(Float32Array.from(collected[0]));
-
-  if (channelCount > 1) {
-    const right = collected.length > 1 ? collected[1] : collected[0];
-    result.getChannelData(1).set(Float32Array.from(right));
+  const stereoBuffer = ctx.createBuffer(filterChannels, frameCount, buffer.sampleRate);
+  for (let channel = 0; channel < filterChannels; channel++) {
+    const samples = collected[channel] ?? collected[0] ?? [];
+    stereoBuffer.getChannelData(channel).set(Float32Array.from(samples));
   }
 
-  for (let channel = 2; channel < channelCount; channel++) {
-    const sourceChannel = buffer.getChannelData(channel);
-    const targetChannel = result.getChannelData(channel);
-    if (sourceChannel.length >= frameCount) {
-      targetChannel.set(sourceChannel.subarray(0, frameCount));
-    } else {
-      targetChannel.set(sourceChannel);
-      for (let i = sourceChannel.length; i < frameCount; i++) {
-        targetChannel[i] = 0;
-      }
+  if (inputChannelCount === 1) {
+    const monoBuffer = ctx.createBuffer(1, frameCount, buffer.sampleRate);
+    const left = stereoBuffer.getChannelData(0);
+    const right = stereoBuffer.getChannelData(1);
+    const mono = monoBuffer.getChannelData(0);
+    for (let i = 0; i < frameCount; i++) {
+      mono[i] = (left[i] + right[i]) / 2;
     }
+    return monoBuffer;
+  }
+
+  if (inputChannelCount === 2) {
+    return stereoBuffer;
+  }
+
+  const result = ctx.createBuffer(inputChannelCount, frameCount, buffer.sampleRate);
+  for (let channel = 0; channel < inputChannelCount; channel++) {
+    const sourceChannel = channel < filterChannels ? stereoBuffer.getChannelData(channel) : stereoBuffer.getChannelData(channel % filterChannels);
+    result.getChannelData(channel).set(sourceChannel);
   }
 
   return result;
@@ -194,13 +121,24 @@ export const processAudioForPlayback = (
 
   try {
     const shifted = pitchShiftAudioBuffer(ctx, buffer, normalizedRatio);
-    const wavBuffer = audioBufferToWavArrayBuffer(shifted);
-    return {
-      playbackBuffer: shifted,
-      lipSyncBase64: arrayBufferToBase64(wavBuffer),
-    };
+    try {
+      const wavBuffer = audioBufferToWavArrayBuffer(shifted);
+      return {
+        playbackBuffer: shifted,
+        lipSyncBase64: arrayBufferToBase64(wavBuffer),
+      };
+    } catch (encodeError) {
+      console.warn('WAV encoding failed; using original audio payload instead.', encodeError, {
+        shiftedLength: shifted.length,
+        shiftedChannels: shifted.numberOfChannels,
+      });
+      return { playbackBuffer: shifted, lipSyncBase64: originalBase64 };
+    }
   } catch (error) {
-    console.warn('Pitch shifting failed; using original audio buffer instead.', error);
+    console.warn('Pitch shifting failed; using original audio buffer instead.', error, {
+      bufferLength: buffer.length,
+      bufferChannels: buffer.numberOfChannels,
+    });
     return { playbackBuffer: buffer, lipSyncBase64: originalBase64 };
   }
 };
