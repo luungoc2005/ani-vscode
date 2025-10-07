@@ -3,7 +3,7 @@ import toWav from 'audiobuffer-to-wav';
 
 export const DEFAULT_PITCH_RATIO = 1.5;
 const MIN_PITCH_DELTA = 0.005;
-const PITCH_CHUNK_SIZE = 2048;
+const PITCH_CHUNK_SIZE = 4096;
 
 export interface TtsAudioPayload {
   data: string;
@@ -23,6 +23,32 @@ const normalizePitchRatio = (value?: number): number => {
     return DEFAULT_PITCH_RATIO;
   }
   return value;
+};
+
+const normalizeAudioBuffer = (buffer: AudioBuffer, targetPeak = 0.95): AudioBuffer => {
+  let peak = 0;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+    const data = buffer.getChannelData(channel);
+    for (let i = 0; i < data.length; i++) {
+      const value = Math.abs(data[i]);
+      if (value > peak) {
+        peak = value;
+      }
+    }
+  }
+
+  if (peak === 0 || peak >= targetPeak) {
+    return buffer;
+  }
+
+  const gain = targetPeak / peak;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+    const data = buffer.getChannelData(channel);
+    for (let i = 0; i < data.length; i++) {
+      data[i] *= gain;
+    }
+  }
+  return buffer;
 };
 
 const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
@@ -53,6 +79,20 @@ const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRati
   soundTouch.rate = 1;
   soundTouch.tempo = 1;
   soundTouch.pitch = pitchRatio;
+  const stretch = (soundTouch as unknown as { stretch?: any }).stretch;
+  if (stretch) {
+    try {
+      stretch.quickSeek = false;
+      stretch.setParameters(
+        buffer.sampleRate,
+        0,
+        0,
+        Math.max(stretch.overlapMs ?? 0, 20)
+      );
+    } catch (error) {
+      console.warn('Failed to adjust SoundTouch stretch parameters', error);
+    }
+  }
 
   const source = new WebAudioBufferSource(buffer);
   const filter = new SimpleFilter(source, soundTouch);
@@ -121,9 +161,10 @@ export const processAudioForPlayback = (
   try {
     const shifted = pitchShiftAudioBuffer(ctx, buffer, normalizedRatio);
     try {
-      const wavBuffer = audioBufferToWavArrayBuffer(shifted);
+      const normalized = normalizeAudioBuffer(shifted);
+      const wavBuffer = audioBufferToWavArrayBuffer(normalized);
       return {
-        playbackBuffer: shifted,
+        playbackBuffer: normalized,
         lipSyncBase64: arrayBufferToBase64(wavBuffer),
       };
     } catch (encodeError) {
