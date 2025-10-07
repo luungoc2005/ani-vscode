@@ -87,10 +87,9 @@ const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRati
   if (inputChannelCount === 1) {
     const monoBuffer = ctx.createBuffer(1, frameCount, buffer.sampleRate);
     const left = stereoBuffer.getChannelData(0);
-    const right = stereoBuffer.getChannelData(1);
     const mono = monoBuffer.getChannelData(0);
     for (let i = 0; i < frameCount; i++) {
-      mono[i] = (left[i] + right[i]) / 2;
+      mono[i] = left[i];
     }
     return monoBuffer;
   }

@@ -54,8 +54,6 @@ export function App() {
     }
   }, [getOrAcquireVsCodeApi]);
 
-  const copyTextToClipboard = async (_text: string) => {};
-
   useEffect(() => {
     if (!containerRef.current) return;
     const dispose = bootCubism(containerRef.current);

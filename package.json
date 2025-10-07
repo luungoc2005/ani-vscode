@@ -91,14 +91,14 @@
         },
         "ani-vscode.tts.voice": {
           "type": "string",
-          "default": "alloy",
+          "default": "marin",
           "description": "Voice name to request from the text-to-speech API."
         },
         "ani-vscode.tts.pitchRatio": {
           "type": "number",
-          "default": 1.5,
+          "default": 1.2,
           "minimum": 0.5,
-          "maximum": 2,
+          "maximum": 1.5,
           "description": "Pitch multiplier applied after synthesis (1.0 = original pitch). Higher values sound brighter."
         },
         "ani-vscode.tts.playbackRate": {
