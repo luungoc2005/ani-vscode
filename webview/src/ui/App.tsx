@@ -7,6 +7,7 @@ import { bootCubism } from '../viewer/boot';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { ModelSwitchButton } from '../components/ModelSwitchButton';
 import { AudioUnlockButton } from '../components/AudioUnlockButton';
+import { AudioUnlockHint } from '../components/AudioUnlockHint';
 import { getVsCodeApi } from '../vscode';
 import { prepareAudioForPlayback, type TtsAudioPayload } from '../audio/ttsAudio';
 
@@ -38,7 +39,13 @@ export function App() {
   const [isTestingConnection, setIsTestingConnection] = useState(true); // Start with testing state
   const [ttsError, setTtsError] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [hasEverUnlocked, setHasEverUnlocked] = useState(false);
   const vscodeApiRef = useRef(getVsCodeApi());
+  const audioUnlockedRef = useRef(audioUnlocked);
+
+  useEffect(() => {
+    audioUnlockedRef.current = audioUnlocked;
+  }, [audioUnlocked]);
 
   const getOrAcquireVsCodeApi = useCallback(() => {
     const api = vscodeApiRef.current ?? getVsCodeApi();
@@ -55,54 +62,68 @@ export function App() {
     }
   }, [getOrAcquireVsCodeApi]);
 
+  const ensureAudioContext = useCallback((): AudioContext | null => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return audioContextRef.current;
+  }, []);
+
+  const stopAudioPlayback = useCallback(() => {
+    try {
+      sourceRef.current?.stop();
+    } catch {}
+    sourceRef.current?.disconnect();
+    sourceRef.current = null;
+  }, []);
+
+  const cancelAudioPlayback = useCallback(() => {
+    playbackGenerationRef.current += 1;
+    stopAudioPlayback();
+  }, [stopAudioPlayback]);
+
+  const resumeAudioContext = useCallback(async (): Promise<boolean> => {
+    const ctx = ensureAudioContext();
+    if (!ctx) {
+      setAudioUnlocked(false);
+      audioUnlockedRef.current = false;
+      return false;
+    }
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (error) {
+        console.warn('Failed to resume audio context', error);
+        setAudioUnlocked(false);
+        audioUnlockedRef.current = false;
+        return false;
+      }
+    }
+    const running = ctx.state === 'running';
+    setAudioUnlocked(running);
+    audioUnlockedRef.current = running;
+    return running;
+  }, [ensureAudioContext]);
+
+  const suspendAudioContext = useCallback(async () => {
+    const ctx = audioContextRef.current;
+    if (ctx && ctx.state === 'running') {
+      try {
+        await ctx.suspend();
+      } catch (error) {
+        console.warn('Failed to suspend audio context', error);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const dispose = bootCubism(containerRef.current);
 
-    const ensureAudioContext = () => {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      return audioContextRef.current;
-    };
-
-    const resumeAudioContext = async (): Promise<boolean> => {
-      const ctx = ensureAudioContext();
-      if (!ctx) {
-        setAudioUnlocked(false);
-        postAudioCapability(false);
-        return false;
-      }
-      if (ctx.state === 'suspended') {
-        try {
-          await ctx.resume();
-        } catch (error) {
-          console.warn('Failed to resume audio context', error);
-          setAudioUnlocked(false);
-          postAudioCapability(false);
-          return false;
-        }
-      }
-      const running = ctx.state === 'running';
-      setAudioUnlocked(running);
-      postAudioCapability(running);
-      return running;
-    };
-
-    const stopAudioPlayback = () => {
-      try {
-        sourceRef.current?.stop();
-      } catch {}
-      sourceRef.current?.disconnect();
-      sourceRef.current = null;
-    };
-
-    const cancelAudioPlayback = () => {
-      playbackGenerationRef.current += 1;
-      stopAudioPlayback();
-    };
-
     const playAudioPayload = async (payload: TtsAudioPayload, generation: number) => {
+      if (!audioUnlockedRef.current) {
+        return;
+      }
       try {
         stopAudioPlayback();
         if (!(await resumeAudioContext())) {
@@ -112,11 +133,11 @@ export function App() {
         if (!ctx) {
           return;
         }
-        if (generation !== playbackGenerationRef.current) {
+        if (!audioUnlockedRef.current || generation !== playbackGenerationRef.current) {
           return;
         }
         const processed = await prepareAudioForPlayback(ctx, payload);
-        if (generation !== playbackGenerationRef.current) {
+        if (!audioUnlockedRef.current || generation !== playbackGenerationRef.current) {
           return;
         }
 
@@ -137,7 +158,7 @@ export function App() {
           stopAudioPlayback();
         });
 
-        if (generation !== playbackGenerationRef.current) {
+        if (!audioUnlockedRef.current || generation !== playbackGenerationRef.current) {
           stopAudioPlayback();
           return;
         }
@@ -339,26 +360,30 @@ export function App() {
       // Clean up global function
       window.setSpeechBubble = undefined;
     };
-  }, [postAudioCapability]);
+  }, [cancelAudioPlayback, ensureAudioContext, getOrAcquireVsCodeApi, resumeAudioContext, stopAudioPlayback]);
 
-  const handleUnlockAudio = async () => {
-    const ctx = audioContextRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
-    audioContextRef.current = ctx;
-    if (ctx.state === 'suspended') {
-      try {
-        await ctx.resume();
-      } catch (error) {
-        console.warn('Explicit audio unlock failed', error);
-      }
+  const handleToggleAudio = useCallback(async () => {
+    if (audioUnlocked) {
+      cancelAudioPlayback();
+      audioUnlockedRef.current = false;
+      setAudioUnlocked(false);
+      await suspendAudioContext();
+      return;
     }
-    const canPlay = ctx.state === 'running';
-    setAudioUnlocked(canPlay);
-    postAudioCapability(canPlay);
-  };
+
+    const canPlay = await resumeAudioContext();
+    audioUnlockedRef.current = canPlay;
+    if (!canPlay) {
+      setAudioUnlocked(false);
+    }
+  }, [audioUnlocked, cancelAudioPlayback, resumeAudioContext, suspendAudioContext]);
 
   useEffect(() => {
+    if (audioUnlocked && !hasEverUnlocked) {
+      setHasEverUnlocked(true);
+    }
     postAudioCapability(audioUnlocked);
-  }, [audioUnlocked, postAudioCapability]);
+  }, [audioUnlocked, hasEverUnlocked, postAudioCapability]);
 
   const handleRetryConnection = () => {
     setIsTestingConnection(true);
@@ -399,32 +424,16 @@ export function App() {
         }}
       >
         <ModelSwitchButton />
-        {!audioUnlocked && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <AudioUnlockButton onUnlock={handleUnlockAudio} />
-            <div
-              style={{
-                padding: '8px 12px',
-                borderRadius: 8,
-                background: 'rgba(20, 20, 30, 0.82)',
-                color: '#fff',
-                fontSize: 11,
-                lineHeight: 1.4,
-                maxWidth: 240,
-                boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
-                pointerEvents: 'none',
-              }}
-            >
-              Click to enable audio playback.
-            </div>
-          </div>
-        )}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <AudioUnlockButton enabled={audioUnlocked} onToggle={handleToggleAudio} />
+          {!hasEverUnlocked && !audioUnlocked && <AudioUnlockHint />}
+        </div>
       </div>
       <DebugPanel visible={showDebugPanel} />
       <SetupGuide

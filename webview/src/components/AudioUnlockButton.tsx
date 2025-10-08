@@ -2,25 +2,24 @@ import React from 'react';
 import { FloatingControlButton } from './FloatingControlButton';
 
 interface AudioUnlockButtonProps {
-  onUnlock: () => Promise<void>;
+  enabled: boolean;
+  onToggle: () => Promise<void> | void;
 }
 
-export function AudioUnlockButton({ onUnlock }: AudioUnlockButtonProps) {
+export function AudioUnlockButton({ enabled, onToggle }: AudioUnlockButtonProps) {
   const handleClick = async () => {
     try {
-      await onUnlock();
+      await onToggle();
     } catch (error) {
-      console.error('Failed to unlock audio context', error);
+      console.error('Failed to toggle audio context', error);
     }
   };
 
+  const label = enabled ? 'Disable audio playback' : 'Enable audio playback';
+
   return (
-    <FloatingControlButton
-      onClick={handleClick}
-      ariaLabel="Enable audio playback"
-      title="Enable audio playback"
-    >
-      🎵
+    <FloatingControlButton onClick={handleClick} ariaLabel={label} title={label}>
+      {enabled ? '🔊' : '🔇'}
     </FloatingControlButton>
   );
 }
