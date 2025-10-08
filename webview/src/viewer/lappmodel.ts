@@ -76,6 +76,7 @@ enum LoadStep {
  * Handles model creation, component setup, update and rendering.
  */
 export class LAppModel extends CubismUserModel {
+  private readonly _lipSyncGain = 12;
   /**
    * Load model from directory and model3.json file.
    */
@@ -367,6 +368,16 @@ export class LAppModel extends CubismUserModel {
       for (let i = 0; i < lipSyncIdCount; ++i) {
         this._lipSyncIds.pushBack(this._modelSetting.getLipSyncParameterId(i));
       }
+
+      if (this._lipSyncIds.getSize() === 0) {
+        const fallbackId = CubismFramework.getIdManager().getId(
+          CubismDefaultParameterId.ParamMouthOpenY
+        );
+        this._lipSyncIds.pushBack(fallbackId);
+        console.debug(
+          'LAppModel.setupLipSyncIds: no lip-sync IDs in model setting, falling back to ParamMouthOpenY'
+        );
+      }
       this._state = LoadStep.SetupLayout;
 
       // callback
@@ -423,7 +434,7 @@ export class LAppModel extends CubismUserModel {
 
         this.createRenderer();
         this.setupTextures();
-        this.getRenderer().startUp(this._subdelegate.getGlManager().getGl());
+        this.getRenderer().startUp(this._subdelegate!.getGlManager().getGl());
       }
     };
   }
@@ -468,7 +479,7 @@ export class LAppModel extends CubismUserModel {
         };
 
         // Load
-        this._subdelegate
+        this._subdelegate!
           .getTextureManager()
           .createTextureFromPngFile(texturePath, usePremultiply, onLoad);
         this.getRenderer().setIsPremultipliedAlpha(usePremultiply);
@@ -565,11 +576,18 @@ export class LAppModel extends CubismUserModel {
     if (this._lipsync) {
       let value = 0.0; // リアルタイムでリップシンクを行う場合、システムから音量を取得して、0~1の範囲で値を入力します。
 
-      this._wavFileHandler.update(deltaTimeSeconds);
-      value = this._wavFileHandler.getRms();
+      if (this._wavFileHandler.update(deltaTimeSeconds)) {
+        value = this._wavFileHandler.getRms();
+      }
+
+      const scaledValue = Math.min(value * this._lipSyncGain, 1.0);
 
       for (let i = 0; i < this._lipSyncIds.getSize(); ++i) {
-        this._model.addParameterValueById(this._lipSyncIds.at(i), value, 0.8);
+        this._model.addParameterValueById(
+          this._lipSyncIds.at(i),
+          scaledValue,
+          0.8
+        );
       }
     }
 
@@ -842,7 +860,7 @@ export class LAppModel extends CubismUserModel {
             this.createRenderer();
             this.setupTextures();
             this.getRenderer().startUp(
-              this._subdelegate.getGlManager().getGl()
+              this._subdelegate!.getGlManager().getGl()
             );
           }
         });
@@ -957,11 +975,11 @@ export class LAppModel extends CubismUserModel {
     if (this._model == null) return;
 
     // キャンバスサイズを渡す
-    const canvas = this._subdelegate.getCanvas();
+    const canvas = this._subdelegate!.getCanvas();
     const viewport: number[] = [0, 0, canvas.width, canvas.height];
 
     this.getRenderer().setRenderState(
-      this._subdelegate.getFrameBuffer(),
+      this._subdelegate!.getFrameBuffer(),
       viewport
     );
     this.getRenderer().drawModel();
@@ -1013,14 +1031,46 @@ export class LAppModel extends CubismUserModel {
     this._subdelegate = subdelegate;
   }
 
-  public startLipSyncFromUrl(path: string): void {
+  public startLipSyncFromUrl(path: string): boolean {
     if (!path) {
-      return;
+      return false;
     }
     try {
       this._wavFileHandler.start(path);
+      return true;
     } catch (error) {
       console.warn('Failed to start lip sync from url', error);
+      return false;
+    }
+  }
+
+  public startLipSyncFromArrayBuffer(data: ArrayBuffer): boolean {
+    if (!data) {
+      return false;
+    }
+
+    try {
+      if (this._wavFileHandler.startFromArrayBuffer(data)) {
+        console.debug('LAppModel.startLipSyncFromArrayBuffer: inline WAV decoded successfully');
+        return true;
+      }
+      console.warn('LAppModel.startLipSyncFromArrayBuffer: inline WAV decode returned false; attempting blob fallback');
+    } catch (error) {
+      console.warn('Failed to start lip sync from buffer', error);
+    }
+
+    try {
+      const blob = new Blob([data], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      console.debug('LAppModel.startLipSyncFromArrayBuffer: falling back to blob URL lip sync');
+      const success = this.startLipSyncFromUrl(url);
+      window.setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 60_000);
+      return success;
+    } catch (blobError) {
+      console.warn('Failed to start lip sync from buffer fallback', blobError);
+      return false;
     }
   }
 
@@ -1030,9 +1080,11 @@ export class LAppModel extends CubismUserModel {
   public constructor() {
     super();
 
-    this._modelSetting = null;
-    this._modelHomeDir = null;
+    this._modelSetting = null as unknown as ICubismModelSetting;
+    this._modelHomeDir = '';
     this._userTimeSeconds = 0.0;
+    this._mocConsistency = false;
+    this._motionConsistency = false;
 
     this._eyeBlinkIds = new csmVector<CubismIdHandle>();
     this._lipSyncIds = new csmVector<CubismIdHandle>();
@@ -1077,9 +1129,10 @@ export class LAppModel extends CubismUserModel {
     this._allMotionCount = 0;
     this._wavFileHandler = new LAppWavFileHandler();
     this._consistency = false;
+    this._subdelegate = null;
   }
 
-  private _subdelegate: LAppSubdelegate;
+  private _subdelegate: LAppSubdelegate | null;
 
   _modelSetting: ICubismModelSetting; // モデルセッティング情報
   _modelHomeDir: string; // モデルセッティングが置かれたディレクトリ
@@ -1108,4 +1161,6 @@ export class LAppModel extends CubismUserModel {
   _allMotionCount: number; // モーション総数
   _wavFileHandler: LAppWavFileHandler; //wavファイルハンドラ
   _consistency: boolean; // MOC3整合性チェック管理用
+  _mocConsistency: boolean;
+  _motionConsistency: boolean;
 }

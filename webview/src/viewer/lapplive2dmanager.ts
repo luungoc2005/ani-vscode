@@ -167,6 +167,14 @@ export class LAppLive2DManager {
     model.startLipSyncFromUrl(path);
   }
 
+  public startLipSyncFromArrayBuffer(data: ArrayBuffer): void {
+    if (this._models.getSize() === 0 || !data) {
+      return;
+    }
+    const model = this._models.at(0);
+    model.startLipSyncFromArrayBuffer(data);
+  }
+
   /**
    * シーンを切り替える
    * サンプルアプリケーションではモデルセットの切り替えを行う。

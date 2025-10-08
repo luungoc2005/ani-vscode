@@ -17,6 +17,7 @@ declare global {
       options?: { durationMs?: number; speedMsPerChar?: number }
     ) => void;
     startLipSyncFromUrl?: (url: string) => void;
+    startLipSyncFromArrayBuffer?: (buffer: ArrayBuffer) => void;
   }
 }
 
@@ -119,8 +120,11 @@ export function App() {
           return;
         }
 
-        const dataUrl = `data:${processed.mimeType};base64,${processed.lipSyncBase64}`;
-        window.startLipSyncFromUrl?.(dataUrl);
+        if (processed.lipSyncWav) {
+          window.startLipSyncFromArrayBuffer?.(processed.lipSyncWav);
+        } else {
+          window.startLipSyncFromUrl?.(`data:${payload.mimeType ?? 'audio/wav'};base64,${payload.data}`);
+        }
 
         const source = ctx.createBufferSource();
         source.buffer = processed.playbackBuffer;

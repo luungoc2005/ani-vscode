@@ -3,7 +3,7 @@ import toWav from 'audiobuffer-to-wav';
 
 export const DEFAULT_PITCH_RATIO = 1.5;
 const MIN_PITCH_DELTA = 0.005;
-const PITCH_CHUNK_SIZE = 4096;
+const PITCH_CHUNK_SIZE = 8192;
 
 export interface TtsAudioPayload {
   data: string;
@@ -14,8 +14,7 @@ export interface TtsAudioPayload {
 
 export interface ProcessedAudioPayload {
   playbackBuffer: AudioBuffer;
-  lipSyncBase64: string;
-  mimeType: string;
+  lipSyncWav?: ArrayBuffer;
 }
 
 const normalizePitchRatio = (value?: number): number => {
@@ -61,18 +60,8 @@ const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
   return bytes.buffer;
 };
 
-const audioBufferToWavArrayBuffer = (buffer: AudioBuffer): ArrayBuffer => toWav(buffer);
-
-const arrayBufferToBase64 = (input: ArrayBuffer): string => {
-  const bytes = new Uint8Array(input);
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-};
+const audioBufferToWavArrayBuffer = (buffer: AudioBuffer): ArrayBuffer =>
+  toWav(buffer, { float32: false });
 
 const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRatio: number): AudioBuffer => {
   const soundTouch = new SoundTouch();
@@ -83,12 +72,7 @@ const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRati
   if (stretch) {
     try {
       stretch.quickSeek = false;
-      stretch.setParameters(
-        buffer.sampleRate,
-        0,
-        0,
-        Math.max(stretch.overlapMs ?? 0, 20)
-      );
+      stretch.setParameters(buffer.sampleRate, 40, 15, 10);
     } catch (error) {
       console.warn('Failed to adjust SoundTouch stretch parameters', error);
     }
@@ -150,36 +134,41 @@ const pitchShiftAudioBuffer = (ctx: AudioContext, buffer: AudioBuffer, pitchRati
 export const processAudioForPlayback = (
   ctx: AudioContext,
   buffer: AudioBuffer,
-  pitchRatio: number,
-  originalBase64: string
-): { playbackBuffer: AudioBuffer; lipSyncBase64: string } => {
+  pitchRatio: number
+): { playbackBuffer: AudioBuffer; lipSyncWav?: ArrayBuffer } => {
   const normalizedRatio = normalizePitchRatio(pitchRatio);
-  if (Math.abs(normalizedRatio - 1) < MIN_PITCH_DELTA) {
-    return { playbackBuffer: buffer, lipSyncBase64: originalBase64 };
+  const requiresPitchShift = Math.abs(normalizedRatio - 1) >= MIN_PITCH_DELTA;
+
+  let workingBuffer = buffer;
+
+  if (requiresPitchShift) {
+    try {
+      workingBuffer = pitchShiftAudioBuffer(ctx, buffer, normalizedRatio);
+    } catch (error) {
+      console.warn('Pitch shifting failed; using original audio buffer instead.', error, {
+        bufferLength: buffer.length,
+        bufferChannels: buffer.numberOfChannels,
+      });
+      workingBuffer = buffer;
+    }
   }
 
   try {
-    const shifted = pitchShiftAudioBuffer(ctx, buffer, normalizedRatio);
-    try {
-      const normalized = normalizeAudioBuffer(shifted);
-      const wavBuffer = audioBufferToWavArrayBuffer(normalized);
-      return {
-        playbackBuffer: normalized,
-        lipSyncBase64: arrayBufferToBase64(wavBuffer),
-      };
-    } catch (encodeError) {
-      console.warn('WAV encoding failed; using original audio payload instead.', encodeError, {
-        shiftedLength: shifted.length,
-        shiftedChannels: shifted.numberOfChannels,
-      });
-      return { playbackBuffer: shifted, lipSyncBase64: originalBase64 };
-    }
-  } catch (error) {
-    console.warn('Pitch shifting failed; using original audio buffer instead.', error, {
-      bufferLength: buffer.length,
-      bufferChannels: buffer.numberOfChannels,
+    const normalized = normalizeAudioBuffer(workingBuffer);
+    const wavBuffer = audioBufferToWavArrayBuffer(normalized);
+    return {
+      playbackBuffer: normalized,
+      lipSyncWav: wavBuffer,
+    };
+  } catch (encodeError) {
+    console.warn('WAV encoding failed; lip sync may be degraded for this utterance.', encodeError, {
+      bufferLength: workingBuffer.length,
+      bufferChannels: workingBuffer.numberOfChannels,
     });
-    return { playbackBuffer: buffer, lipSyncBase64: originalBase64 };
+    return {
+      playbackBuffer: workingBuffer,
+      lipSyncWav: undefined,
+    };
   }
 };
 
@@ -187,20 +176,17 @@ export const prepareAudioForPlayback = async (
   ctx: AudioContext,
   payload: TtsAudioPayload
 ): Promise<ProcessedAudioPayload> => {
-  const mimeType = payload.mimeType ?? 'audio/wav';
   const arrayBuffer = base64ToArrayBuffer(payload.data);
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
 
-  const { playbackBuffer, lipSyncBase64 } = processAudioForPlayback(
+  const { playbackBuffer, lipSyncWav } = processAudioForPlayback(
     ctx,
     audioBuffer,
-    payload.pitchRatio ?? payload.playbackRate ?? DEFAULT_PITCH_RATIO,
-    payload.data
+    payload.pitchRatio ?? payload.playbackRate ?? DEFAULT_PITCH_RATIO
   );
 
   return {
     playbackBuffer,
-    lipSyncBase64,
-    mimeType,
+    lipSyncWav,
   };
 };
