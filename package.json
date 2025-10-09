@@ -15,7 +15,7 @@
     "commands": [
       {
         "command": "ani-vscode.showPanel",
-        "title": "Ani: Show assistant Panel"
+        "title": "Ani: Show Assistant Panel"
       }
     ],
     "configuration": {
