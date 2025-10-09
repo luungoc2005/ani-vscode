@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SpeechBubble } from '../components/SpeechBubble';
 import { ThinkingDots } from '../components/ThinkingDots';
 import { DebugPanel } from '../components/DebugPanel';
@@ -6,6 +6,10 @@ import { SetupGuide } from '../components/SetupGuide';
 import { bootCubism } from '../viewer/boot';
 import { LAppDelegate } from '../viewer/lappdelegate';
 import { ModelSwitchButton } from '../components/ModelSwitchButton';
+import { AudioUnlockButton } from '../components/AudioUnlockButton';
+import { AudioUnlockHint } from '../components/AudioUnlockHint';
+import { getVsCodeApi } from '../vscode';
+import { prepareAudioForPlayback, type TtsAudioPayload } from '../audio/ttsAudio';
 
 declare global {
   interface Window {
@@ -13,11 +17,18 @@ declare global {
       text: string,
       options?: { durationMs?: number; speedMsPerChar?: number }
     ) => void;
+    startLipSyncFromUrl?: (url: string) => void;
+    startLipSyncFromArrayBuffer?: (buffer: ArrayBuffer) => void;
   }
 }
 
+
+
 export function App() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const playbackGenerationRef = useRef(0);
   const [speechText, setSpeechText] = useState('');
   const [speechOptions, setSpeechOptions] = useState<{ durationMs?: number; speedMsPerChar?: number } | undefined>(undefined);
   const [dismissSpeech, setDismissSpeech] = useState(false);
@@ -26,12 +37,138 @@ export function App() {
   const [showSetupGuide, setShowSetupGuide] = useState(true); // Show initially while testing
   const [setupErrorMessage, setSetupErrorMessage] = useState<string | undefined>(undefined);
   const [isTestingConnection, setIsTestingConnection] = useState(true); // Start with testing state
+  const [ttsError, setTtsError] = useState<string | null>(null);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [hasEverUnlocked, setHasEverUnlocked] = useState(false);
+  const vscodeApiRef = useRef(getVsCodeApi());
+  const audioUnlockedRef = useRef(audioUnlocked);
 
-  const copyTextToClipboard = async (_text: string) => {};
+  useEffect(() => {
+    audioUnlockedRef.current = audioUnlocked;
+  }, [audioUnlocked]);
+
+  const getOrAcquireVsCodeApi = useCallback(() => {
+    const api = vscodeApiRef.current ?? getVsCodeApi();
+    if (api) {
+      vscodeApiRef.current = api;
+    }
+    return api;
+  }, []);
+
+  const postAudioCapability = useCallback((canPlay: boolean) => {
+    const vscode = getOrAcquireVsCodeApi();
+    if (vscode) {
+      vscode.postMessage({ type: 'audioCapability', canPlay });
+    }
+  }, [getOrAcquireVsCodeApi]);
+
+  const ensureAudioContext = useCallback((): AudioContext | null => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return audioContextRef.current;
+  }, []);
+
+  const stopAudioPlayback = useCallback(() => {
+    try {
+      sourceRef.current?.stop();
+    } catch {}
+    sourceRef.current?.disconnect();
+    sourceRef.current = null;
+  }, []);
+
+  const cancelAudioPlayback = useCallback(() => {
+    playbackGenerationRef.current += 1;
+    stopAudioPlayback();
+  }, [stopAudioPlayback]);
+
+  const resumeAudioContext = useCallback(async (): Promise<boolean> => {
+    const ctx = ensureAudioContext();
+    if (!ctx) {
+      setAudioUnlocked(false);
+      audioUnlockedRef.current = false;
+      return false;
+    }
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+      } catch (error) {
+        console.warn('Failed to resume audio context', error);
+        setAudioUnlocked(false);
+        audioUnlockedRef.current = false;
+        return false;
+      }
+    }
+    const running = ctx.state === 'running';
+    setAudioUnlocked(running);
+    audioUnlockedRef.current = running;
+    return running;
+  }, [ensureAudioContext]);
+
+  const suspendAudioContext = useCallback(async () => {
+    const ctx = audioContextRef.current;
+    if (ctx && ctx.state === 'running') {
+      try {
+        await ctx.suspend();
+      } catch (error) {
+        console.warn('Failed to suspend audio context', error);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const dispose = bootCubism(containerRef.current);
+
+    const playAudioPayload = async (payload: TtsAudioPayload, generation: number) => {
+      if (!audioUnlockedRef.current) {
+        return;
+      }
+      try {
+        stopAudioPlayback();
+        if (!(await resumeAudioContext())) {
+          return;
+        }
+        const ctx = ensureAudioContext();
+        if (!ctx) {
+          return;
+        }
+        if (!audioUnlockedRef.current || generation !== playbackGenerationRef.current) {
+          return;
+        }
+        const processed = await prepareAudioForPlayback(ctx, payload);
+        if (!audioUnlockedRef.current || generation !== playbackGenerationRef.current) {
+          return;
+        }
+
+        if (processed.lipSyncWav) {
+          window.startLipSyncFromArrayBuffer?.(processed.lipSyncWav);
+        } else {
+          window.startLipSyncFromUrl?.(`data:${payload.mimeType ?? 'audio/wav'};base64,${payload.data}`);
+        }
+
+        const source = ctx.createBufferSource();
+        source.buffer = processed.playbackBuffer;
+        source.playbackRate.value = 1;
+
+        source.connect(ctx.destination);
+
+        sourceRef.current = source;
+        source.addEventListener('ended', () => {
+          stopAudioPlayback();
+        });
+
+        if (!audioUnlockedRef.current || generation !== playbackGenerationRef.current) {
+          stopAudioPlayback();
+          return;
+        }
+
+        source.start();
+      } catch (error) {
+        console.error('Failed to play TTS audio', error);
+        stopAudioPlayback();
+      }
+    };
 
     // Two-mode gaze control: caret-follow and mouse-follow with auto-switching
     let mode: 'mouse' | 'caret' = 'mouse';
@@ -46,6 +183,7 @@ export function App() {
       setSpeechText(text);
       setSpeechOptions(options);
       setDismissSpeech(false);
+      setTtsError(null);
     };
 
     // Expose global function for programmatic control
@@ -139,9 +277,22 @@ export function App() {
           mode = 'mouse';
         }, 1500);
       } else if (data.type === 'speech' && typeof data.text === 'string') {
+        cancelAudioPlayback();
+        const currentGeneration = playbackGenerationRef.current;
         showSpeech(data.text, data.options);
+        if (data.audio && typeof data.audio.data === 'string') {
+          void playAudioPayload(data.audio, currentGeneration);
+        }
       } else if (data.type === 'dismissSpeech') {
+        cancelAudioPlayback();
         setDismissSpeech(true);
+      } else if (data.type === 'ttsError') {
+        if (data.clear) {
+          setTtsError(null);
+        } else if (typeof data.message === 'string') {
+          setTtsError(data.message);
+          console.warn('Ani VSCode TTS error:', data.message);
+        }
       } else if (data.type === 'thinking' && typeof data.on === 'boolean') {
         if (data.on) startThinking();
         else stopThinking();
@@ -155,7 +306,7 @@ export function App() {
         // Respond with current model name
         if ((window as any).getAvailableMotions) {
           const motionsData = (window as any).getAvailableMotions();
-          const vscode = (window as any).acquireVsCodeApi?.();
+          const vscode = getOrAcquireVsCodeApi();
           if (vscode) {
             vscode.postMessage({
               type: 'currentModel',
@@ -199,6 +350,7 @@ export function App() {
     // showSpeech('Hello World');
 
     return () => {
+      cancelAudioPlayback();
       dispose?.();
       window.removeEventListener('message', onMessage);
       document.removeEventListener('pointermove', onPointerMove);
@@ -208,11 +360,34 @@ export function App() {
       // Clean up global function
       window.setSpeechBubble = undefined;
     };
-  }, []);
+  }, [cancelAudioPlayback, ensureAudioContext, getOrAcquireVsCodeApi, resumeAudioContext, stopAudioPlayback]);
+
+  const handleToggleAudio = useCallback(async () => {
+    if (audioUnlocked) {
+      cancelAudioPlayback();
+      audioUnlockedRef.current = false;
+      setAudioUnlocked(false);
+      await suspendAudioContext();
+      return;
+    }
+
+    const canPlay = await resumeAudioContext();
+    audioUnlockedRef.current = canPlay;
+    if (!canPlay) {
+      setAudioUnlocked(false);
+    }
+  }, [audioUnlocked, cancelAudioPlayback, resumeAudioContext, suspendAudioContext]);
+
+  useEffect(() => {
+    if (audioUnlocked && !hasEverUnlocked) {
+      setHasEverUnlocked(true);
+    }
+    postAudioCapability(audioUnlocked);
+  }, [audioUnlocked, hasEverUnlocked, postAudioCapability]);
 
   const handleRetryConnection = () => {
     setIsTestingConnection(true);
-    const vscode = (window as any).acquireVsCodeApi?.();
+    const vscode = getOrAcquireVsCodeApi();
     if (vscode) {
       vscode.postMessage({ type: 'retryConnection' });
     }
@@ -237,7 +412,29 @@ export function App() {
           }}
         />
       )}
-      <ModelSwitchButton />
+      <div
+        style={{
+          position: 'absolute',
+          left: '10vw',
+          top: 12,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          zIndex: 15,
+        }}
+      >
+        <ModelSwitchButton />
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <AudioUnlockButton enabled={audioUnlocked} onToggle={handleToggleAudio} />
+          {!hasEverUnlocked && !audioUnlocked && <AudioUnlockHint />}
+        </div>
+      </div>
       <DebugPanel visible={showDebugPanel} />
       <SetupGuide
         visible={showSetupGuide}
@@ -246,6 +443,41 @@ export function App() {
         onDismiss={handleDismissSetupGuide}
         isTesting={isTestingConnection}
       />
+      {ttsError && !showSetupGuide && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 16,
+            bottom: 16,
+            maxWidth: 320,
+            padding: '12px 16px',
+            borderRadius: 8,
+            background: 'rgba(128,0,0,0.88)',
+            color: '#fff',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
+            fontSize: 12,
+            lineHeight: 1.4,
+            zIndex: 20,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Speech playback unavailable</div>
+          <div>{ttsError}</div>
+          <button
+            onClick={() => setTtsError(null)}
+            style={{
+              marginTop: 8,
+              background: 'rgba(255,255,255,0.15)',
+              color: '#fff',
+              border: 'none',
+              padding: '4px 10px',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
     </div>
   );
 }

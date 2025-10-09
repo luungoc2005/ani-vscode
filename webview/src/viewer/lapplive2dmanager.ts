@@ -76,6 +76,9 @@ export class LAppLive2DManager {
    * モデルの更新処理及び描画処理を行う
    */
   public onUpdate(): void {
+    if (!this._subdelegate) {
+      return;
+    }
     const { width, height } = this._subdelegate.getCanvas();
 
     const projection: CubismMatrix44 = new CubismMatrix44();
@@ -156,6 +159,22 @@ export class LAppLive2DManager {
     model.setExpression(expressionId);
   }
 
+  public startLipSyncFromUrl(path: string): void {
+    if (this._models.getSize() === 0 || !path) {
+      return;
+    }
+    const model = this._models.at(0);
+    model.startLipSyncFromUrl(path);
+  }
+
+  public startLipSyncFromArrayBuffer(data: ArrayBuffer): void {
+    if (this._models.getSize() === 0 || !data) {
+      return;
+    }
+    const model = this._models.at(0);
+    model.startLipSyncFromArrayBuffer(data);
+  }
+
   /**
    * シーンを切り替える
    * サンプルアプリケーションではモデルセットの切り替えを行う。
@@ -178,7 +197,9 @@ export class LAppLive2DManager {
 
     this.releaseAllModel();
     const instance = new LAppModel();
-    instance.setSubdelegate(this._subdelegate);
+    if (this._subdelegate) {
+      instance.setSubdelegate(this._subdelegate);
+    }
     instance.loadAssets(modelPath, modelJsonName);
     this._models.pushBack(instance);
   }
@@ -235,7 +256,7 @@ export class LAppLive2DManager {
   /**
    * 自身が所属するSubdelegate
    */
-  private _subdelegate: LAppSubdelegate;
+  private _subdelegate: LAppSubdelegate | null;
 
   _viewMatrix: CubismMatrix44; // モデル描画に用いるview行列
   _models: csmVector<LAppModel>; // モデルインスタンスのコンテナ

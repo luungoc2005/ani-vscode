@@ -1,4 +1,5 @@
 import React from 'react';
+import { getVsCodeApi } from '../vscode';
 
 interface SetupGuideProps {
   visible: boolean;
@@ -14,7 +15,7 @@ export function SetupGuide(props: SetupGuideProps) {
   if (!visible) return null;
 
   const openSettings = () => {
-    const vscode = (window as any).acquireVsCodeApi?.();
+    const vscode = getVsCodeApi();
     if (vscode) {
       vscode.postMessage({ type: 'openSettings' });
     }

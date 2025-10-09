@@ -68,6 +68,46 @@
           "minimum": 1,
           "description": "Maximum number of messages to keep in chat history (including system message)."
         },
+        "ani-vscode.tts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable text-to-speech playback for LLM responses."
+        },
+        "ani-vscode.tts.baseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "Base URL for an OpenAI-compatible text-to-speech API."
+        },
+        "ani-vscode.tts.apiKey": {
+          "type": "string",
+          "default": "dummy",
+          "markdownDescription": "API key for the text-to-speech provider (stored in settings).",
+          "description": "API key for the text-to-speech provider."
+        },
+        "ani-vscode.tts.model": {
+          "type": "string",
+          "default": "gpt-4o-mini-tts",
+          "description": "Model name for the OpenAI-compatible text-to-speech API."
+        },
+        "ani-vscode.tts.voice": {
+          "type": "string",
+          "default": "marin",
+          "description": "Voice name to request from the text-to-speech API."
+        },
+        "ani-vscode.tts.pitchRatio": {
+          "type": "number",
+          "default": 1.2,
+          "minimum": 0.5,
+          "maximum": 1.5,
+          "description": "Pitch multiplier applied after synthesis (1.0 = original pitch). Higher values sound brighter."
+        },
+        "ani-vscode.tts.playbackRate": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.5,
+          "maximum": 1.1,
+          "description": "Playback speed multiplier. Leave at 1.0 to keep natural timing."
+        },
         "ani-vscode.plugins.codeReview.enabled": {
           "type": "boolean",
           "default": true,

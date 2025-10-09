@@ -17,7 +17,10 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize telemetry
   const telemetry = TelemetryService.initialize(TELEMETRY_CONNECTION_STRING);
   context.subscriptions.push({ dispose: () => telemetry.dispose() });
+  const outputChannel = vscode.window.createOutputChannel('Ani VSCode');
+  context.subscriptions.push(outputChannel);
   const disposable = vscode.commands.registerCommand('ani-vscode.showPanel', () => {
+    outputChannel.appendLine('--- Ani panel opened ---');
     // Retrieve last panel position, defaulting to Beside if not previously saved
     const lastPanelColumn = context.globalState.get<vscode.ViewColumn>('ani-vscode.lastPanelColumn', vscode.ViewColumn.Beside);
     
@@ -165,7 +168,7 @@ export function activate(context: vscode.ExtensionContext) {
     telemetry.recordEnabledPlugins(enabledPlugins);
     
     // Initialize agent loop
-    const agentLoop = new AgentLoop(messageQueue, pluginManager);
+  const agentLoop = new AgentLoop(messageQueue, pluginManager, outputChannel);
     agentLoop.setPanel(panel);
     agentLoop.setExtensionPath(context.extensionPath);
     agentLoop.setCharacter(character);
@@ -304,6 +307,8 @@ export function activate(context: vscode.ExtensionContext) {
             }, 500);
           }
         })();
+      } else if (message.type === 'audioCapability') {
+        agentLoop.setAudioCapability(Boolean(message.canPlay));
       }
     });
 
