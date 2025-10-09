@@ -11,6 +11,10 @@
     "Other"
   ],
   "main": "./out/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/ani-vscode.git"
+  },
   "contributes": {
     "commands": [
       {
@@ -177,13 +181,15 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p . && mkdir -p out/characters && cp src/characters/*.mdx out/characters/",
-    "compile:win": "tsc -p . && if not exist out\\characters (mkdir out\\characters) && copy src\\characters\\*.mdx out\\characters\\",
+    "compile": "node ./scripts/build-extension.mjs",
+    "compile:win": "node ./scripts/build-extension.mjs",
     "watch": "tsc -w -p .",
+    "typecheck": "tsc -p . --noEmit",
     "prepublish": "npm run build",
     "build": "node -e \"process.platform === 'win32' ? process.exit(0) : process.exit(1)\" && npm run build:win || npm run build:unix",
     "build:unix": "npm run compile && cd webview && npm install --no-audit --no-fund && npm run build",
     "build:win": "npm run compile:win && cd webview && npm install --no-audit --no-fund && npm run build",
+    "package": "npm run build && npx @vscode/vsce package",
     "postinstall": "cd webview && npm install --no-audit --no-fund && npm run build"
   },
   "devDependencies": {
@@ -191,6 +197,8 @@
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
     "typescript": "^5.5.4"
   },
   "license": "SEE LICENSE IN LICENSE.md",

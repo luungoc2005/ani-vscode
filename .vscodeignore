@@ -1,0 +1,26 @@
+node_modules/**
+
+# Exclude development assets and tooling configs
+.vscode/**
+.git/**
+.gitignore
+**/*.tsbuildinfo
+scripts/**
+
+# Exclude source; compiled JS in out/ is shipped instead
+src/**
+tsconfig.json
+
+# Webview build artifacts: only keep dist output
+webview/node_modules/**
+webview/src/**
+webview/public/**
+webview/.vscode/**
+webview/.gitignore
+webview/package.json
+webview/package-lock.json
+webview/tsconfig.json
+webview/vite.config.mts
+
+# Documentation and misc files not needed at runtime
+docs/**

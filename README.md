@@ -17,6 +17,10 @@ Almost entirely vibe-coded
 
 # Build
 - From this folder: `npm install` then `npm run build`.
+- Optional: `npm run typecheck` to run the TypeScript compiler without emitting files.
+
+# Package
+- Ensure dependencies are installed, then run `npm run package` to create a `.vsix` artifact using `vsce` in the project root.
 
 # Debugging
 - Open the project in VSCode, Run > Start Debugging
