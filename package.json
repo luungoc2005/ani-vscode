@@ -155,6 +155,28 @@
           ],
           "description": "List of RSS feed URLs to fetch articles from. The plugin will randomly select one feed each time it triggers."
         },
+        "ani-vscode.plugins.weather.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Weather plugin that keeps an eye on local conditions and only speaks up when the weather meaningfully changes."
+        },
+        "ani-vscode.plugins.weather.weight": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Weight for Weather plugin selection (higher = more likely to trigger). Default: 1.0"
+        },
+        "ani-vscode.plugins.weather.location": {
+          "type": "string",
+          "default": "Singapore",
+          "description": "Location to monitor for weather changes. You can use a city name (resolved via Open-Meteo geocoding) or provide coordinates as latitude,longitude."
+        },
+        "ani-vscode.plugins.weather.cacheMinutes": {
+          "type": "number",
+          "default": 30,
+          "minimum": 30,
+          "description": "How long (in minutes) to cache weather responses before hitting the API again. Minimum 30 minutes."
+        },
         "ani-vscode.plugins.screenshot.enabled": {
           "type": "boolean",
           "default": false,

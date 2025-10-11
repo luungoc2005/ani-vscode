@@ -7,6 +7,7 @@ import { CodeReviewPlugin } from './plugins/CodeReviewPlugin';
 import { HackerNewsPlugin } from './plugins/HackerNewsPlugin';
 import { RSSFeedPlugin } from './plugins/RSSFeedPlugin';
 import { ScreenshotPlugin } from './plugins/ScreenshotPlugin';
+import { WeatherPlugin } from './plugins/WeatherPlugin';
 import { AgentLoop } from './AgentLoop';
 import { TelemetryService } from './TelemetryService';
 import { registerGitPushListener } from './plugins/git/GitIntegration';
@@ -162,6 +163,9 @@ export function activate(context: vscode.ExtensionContext) {
     
     const screenshotPlugin = new ScreenshotPlugin();
     pluginManager.register(screenshotPlugin);
+
+  const weatherPlugin = new WeatherPlugin();
+  pluginManager.register(weatherPlugin);
 
     // Record enabled plugins
     const enabledPlugins = pluginManager.getEnabledPlugins(cfg).map(p => p.id);
