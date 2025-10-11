@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { Operation } from 'vscode.git';
 import type { API as GitAPI, GitExtension, Repository, RepositoryOperationEvent } from 'vscode.git';
 import { AgentLoop } from '../../AgentLoop';
 import { CodeReviewPlugin } from '../CodeReviewPlugin';
+
+const OPERATION_PUSH = 10; // Mirrors vscode.git Operation.Push const enum value
 
 async function getGitApi(): Promise<GitAPI | null> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
@@ -85,7 +86,7 @@ function watchRepository(
   agentLoop: AgentLoop
 ): void {
   const disposable = subscribeToPushEvents(repository, gitApi, (event: OperationEventWithRepository) => {
-    if (event.operation === Operation.Push && !event.hasErrored) {
+    if (event.operation === OPERATION_PUSH && !event.hasErrored) {
       void handlePush(repository, codeReviewPlugin, agentLoop);
     }
   });
