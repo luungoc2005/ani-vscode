@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ChatOpenAI, ChatOpenAIFields } from '@langchain/openai';
-import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
+import type { ToolCall } from '@langchain/core/messages/tool';
 import { MessageQueue } from './MessageQueue';
 import { PluginManager } from './plugins/PluginManager';
 import { PluginContext, EnqueueMessageOptions } from './plugins/IPlugin';
@@ -8,6 +9,32 @@ import { loadCharacterCard } from './CharacterLoader';
 import { TelemetryService } from './TelemetryService';
 import motionsMap from './motions_map.json';
 import { TtsService, TtsConfig } from './TtsService';
+
+const QUICK_REPLY_TOOL = {
+  type: 'function',
+  function: {
+    name: 'show_quick_replies',
+    description:
+      'Display up to three concise quick-reply options for the user. The user can use these options to reply to you. Think and imagine about how the user would reply to your message. Do not just repeat what you said.',
+    parameters: {
+      type: 'object',
+      properties: {
+        replies: {
+          type: 'array',
+          description: 'Between one and three short replies for the user to choose from.',
+          minItems: 1,
+          maxItems: 3,
+          items: {
+            type: 'string',
+            minLength: 1,
+            description: 'Replies that the user can choose from.',
+          },
+        },
+      },
+      required: ['replies'],
+    },
+  },
+} as const;
 
 /**
  * Main agent loop that processes messages from the queue or plugins
@@ -20,13 +47,14 @@ export class AgentLoop {
   private roastDebounceTimer: NodeJS.Timeout | undefined;
   private cooldownTimer: NodeJS.Timeout | undefined;
   private lastLlmEndedAt: number | null = null;
-  private chatHistory: Array<SystemMessage | HumanMessage | AIMessage> = [];
+  private chatHistory: Array<SystemMessage | HumanMessage | AIMessage | ToolMessage> = [];
   private lastFilePath: string | null = null;
   private currentCharacter: string = 'Mao';
   private extensionPath: string = '';
   private ttsService = new TtsService();
   private logger?: vscode.OutputChannel;
   private hasAudioCapability = false;
+  private pendingQuickReplies: string[] = [];
 
   constructor(messageQueue: MessageQueue, pluginManager: PluginManager, logger?: vscode.OutputChannel) {
     this.messageQueue = messageQueue;
@@ -218,6 +246,7 @@ export class AgentLoop {
 
       // Send to LLM
       const model = cfg.get<string>('llm.model', 'gpt-4o-mini');
+      const quickRepliesEnabled = cfg.get<boolean>('quickReplies.enabled', false);
       const llmFields: ChatOpenAIFields = {
         model,
         configuration: { baseURL: baseUrl },
@@ -225,7 +254,10 @@ export class AgentLoop {
       if (apiKey) {
         llmFields.apiKey = apiKey;
       }
+      this.pendingQuickReplies = [];
+
       const llm = new ChatOpenAI(llmFields);
+      const llmRunner = quickRepliesEnabled ? llm.bindTools([QUICK_REPLY_TOOL]) : llm;
 
       // Create human message with optional image content
       let humanMessage: HumanMessage;
@@ -247,8 +279,33 @@ export class AgentLoop {
         humanMessage = new HumanMessage(userPrompt);
       }
 
-      const historyToSend = [...this.chatHistory, humanMessage];
-      const aiMsg = await llm.invoke(historyToSend);
+      const historyToSend: Array<SystemMessage | HumanMessage | AIMessage | ToolMessage> = [...this.chatHistory, humanMessage];
+      const newMessages: Array<HumanMessage | AIMessage | ToolMessage> = [humanMessage];
+
+      let aiMsg = await llmRunner.invoke(historyToSend);
+
+      if (quickRepliesEnabled) {
+        while (true) {
+          historyToSend.push(aiMsg);
+          newMessages.push(aiMsg);
+
+          const toolCalls = Array.isArray(aiMsg.tool_calls) ? aiMsg.tool_calls : [];
+          if (!toolCalls.length) {
+            break;
+          }
+
+          for (const call of toolCalls) {
+            const toolMessage = await this.executeToolCall(call);
+            historyToSend.push(toolMessage);
+            newMessages.push(toolMessage);
+          }
+
+          aiMsg = await llmRunner.invoke(historyToSend);
+        }
+      } else {
+        historyToSend.push(aiMsg);
+        newMessages.push(aiMsg);
+      }
 
       let text = typeof aiMsg.content === 'string'
         ? aiMsg.content
@@ -259,14 +316,24 @@ export class AgentLoop {
       text = this.stripThinkTags(text);
       text = this.stripTrailingLlmArtifacts(text);
 
+      const finalAiMessageForHistory = new AIMessage(text);
+      if (historyToSend.length > 0) {
+        historyToSend[historyToSend.length - 1] = finalAiMessageForHistory;
+      }
+      for (let i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i] instanceof AIMessage) {
+          newMessages[i] = finalAiMessageForHistory;
+          break;
+        }
+      }
+
       // Notify the plugin of the AI response if it has an onResponse method
       if (triggeringPlugin && typeof triggeringPlugin.onResponse === 'function') {
         triggeringPlugin.onResponse(text);
       }
 
       // Update chat history and prune if needed
-      this.chatHistory.push(new HumanMessage(userPrompt));
-      this.chatHistory.push(new AIMessage(text));
+      this.chatHistory.push(...newMessages);
       if (this.chatHistory.length > maxHistory) {
         const system = this.chatHistory[0] instanceof SystemMessage ? [this.chatHistory[0]] : [];
         const tail = this.chatHistory.slice(-1 * (maxHistory - system.length));
@@ -325,17 +392,26 @@ export class AgentLoop {
         }
 
         const displayText = appendText ? `${text}\n\n${appendText}` : text;
-        panel.webview.postMessage({ type: 'speech', text: displayText, audio: audioPayload });
+        const quickReplies = quickRepliesEnabled ? this.consumePendingQuickReplies() : [];
+        panel.webview.postMessage({
+          type: 'speech',
+          text: displayText,
+          audio: audioPayload,
+          ...(quickReplies.length > 0 ? { quickReplies } : {}),
+        });
         
         // Send connection success message to hide setup guide if it's showing
         panel.webview.postMessage({ type: 'connectionSuccess' });
         
         // Trigger expression animation if fastModel is configured
         await this.triggerExpression(text, panel, cfg);
+      } else {
+        this.consumePendingQuickReplies();
       }
     } catch (err: any) {
       const msg = err?.message || String(err);
       const panel = (this as any).panel as vscode.WebviewPanel;
+      this.consumePendingQuickReplies();
       
       // Check if this is a connection error or model not found error
       const isConnectionError = 
@@ -464,6 +540,107 @@ export class AgentLoop {
         voice,
       },
     };
+  }
+
+  private async executeToolCall(call: ToolCall): Promise<ToolMessage> {
+    const toolCallId = call.id ?? `tool-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    let content: string;
+    let status: 'success' | 'error' = 'success';
+
+    switch (call.name) {
+      case 'show_quick_replies':
+        content = this.handleQuickRepliesTool(call);
+        break;
+      default:
+        content = `Tool "${call.name}" is not implemented.`;
+        status = 'error';
+        break;
+    }
+
+    return new ToolMessage({
+      tool_call_id: toolCallId,
+      content,
+      status,
+    });
+  }
+
+  private handleQuickRepliesTool(call: ToolCall): string {
+    const args = this.parseToolArgs(call.args as unknown);
+    const replies = this.normalizeQuickReplies((args as { replies?: unknown }).replies);
+
+    if (replies.length === 0) {
+      this.pendingQuickReplies = [];
+      return 'No quick replies were displayed because no valid replies were provided.';
+    }
+
+    this.pendingQuickReplies = replies;
+    return `Prepared ${replies.length} quick reply option${replies.length === 1 ? '' : 's'} for the user.`;
+  }
+
+  private parseToolArgs(raw: unknown): Record<string, unknown> {
+    if (!raw) {
+      return {};
+    }
+
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch (error) {
+        this.logger?.appendLine(`[Tools][error] Failed to parse tool arguments: ${String(error)}`);
+      }
+      return {};
+    }
+
+    if (typeof raw === 'object' && !Array.isArray(raw)) {
+      return raw as Record<string, unknown>;
+    }
+
+    return {};
+  }
+
+  private normalizeQuickReplies(input: unknown): string[] {
+    if (!Array.isArray(input)) {
+      return [];
+    }
+
+    const replies: string[] = [];
+    const seen = new Set<string>();
+    const candidateKeys = ['text', 'label', 'value', 'reply'];
+
+    for (const item of input) {
+      let candidate: string | undefined;
+
+      if (typeof item === 'string') {
+        candidate = item.trim();
+      } else if (item && typeof item === 'object') {
+        for (const key of candidateKeys) {
+          const value = (item as Record<string, unknown>)[key];
+          if (typeof value === 'string' && value.trim().length > 0) {
+            candidate = value.trim();
+            break;
+          }
+        }
+      }
+
+      if (candidate && candidate.length > 0 && !seen.has(candidate)) {
+        seen.add(candidate);
+        replies.push(candidate);
+        if (replies.length >= 5) {
+          break;
+        }
+      }
+    }
+
+    return replies;
+  }
+
+  private consumePendingQuickReplies(): string[] {
+    const replies = this.pendingQuickReplies;
+    this.pendingQuickReplies = [];
+    return replies;
   }
 
   /**

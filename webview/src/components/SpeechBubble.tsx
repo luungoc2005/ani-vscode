@@ -9,8 +9,22 @@ export function SpeechBubble(props: {
   dismiss?: boolean;
   onCopied?: (text: string) => void;
   onHidden?: () => void;
+  onTypingComplete?: () => void;
+  quickReplies?: string[];
+  showQuickReplies?: boolean;
+  onQuickReplySelected?: (reply: string) => void;
 }) {
-  const { text, options, dismiss, onCopied, onHidden } = props;
+  const {
+    text,
+    options,
+    dismiss,
+    onCopied,
+    onHidden,
+    onTypingComplete,
+    quickReplies: rawQuickReplies,
+    showQuickReplies = false,
+    onQuickReplySelected,
+  } = props;
   const [displayText, setDisplayText] = useState('');
   const [isVisible, setIsVisible] = useState(false);
   const [opacity, setOpacity] = useState(0);
@@ -18,10 +32,14 @@ export function SpeechBubble(props: {
   const typingTimerRef = useRef<number | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
   const targetTextRef = useRef('');
+  const typingCompletedRef = useRef(false);
   const optionsRef = useRef<{ durationMs: number; speedMsPerChar: number }>({
     durationMs: 60000,
     speedMsPerChar: 8,
   });
+  const quickReplies = useMemo(() => {
+    return Array.isArray(rawQuickReplies) ? rawQuickReplies.filter((r) => typeof r === 'string' && r.trim().length > 0) : [];
+  }, [rawQuickReplies]);
 
   // Create markdown-it instance
   const md = useMemo(() => {
@@ -51,6 +69,7 @@ export function SpeechBubble(props: {
     setDisplayText('');
     setIsVisible(true);
     setOpacity(1);
+    typingCompletedRef.current = false;
 
     // Add multiple characters per update to reduce re-renders and improve performance
     // Update every 16ms (60fps) but add multiple characters based on speedMsPerChar
@@ -65,6 +84,10 @@ export function SpeechBubble(props: {
 
       if (nextIndex >= target.length) {
         if (typingTimerRef.current != null) window.clearInterval(typingTimerRef.current);
+        if (!typingCompletedRef.current) {
+          typingCompletedRef.current = true;
+          onTypingComplete?.();
+        }
         fadeTimerRef.current = window.setTimeout(() => {
           setOpacity(0);
         }, durationMs);
@@ -149,6 +172,57 @@ export function SpeechBubble(props: {
         void copyTextToClipboard(value);
       }}
     >
+      {quickReplies.length > 0 && showQuickReplies && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: 0,
+            right: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            marginBottom: 8,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 8,
+              justifyContent: 'center',
+              pointerEvents: 'auto',
+            }}
+          >
+            {quickReplies.map((reply, index) => (
+              <button
+                key={`${reply}-${index}`}
+                className="quick-reply-button"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onQuickReplySelected?.(reply);
+                }}
+                style={{
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  borderRadius: 999,
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  transition: 'background 150ms ease, border-color 150ms ease',
+                  backdropFilter: 'blur(6px)',
+                  WebkitBackdropFilter: 'blur(6px)',
+                }}
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div
         dangerouslySetInnerHTML={{ __html: renderedHtml }}
         style={{
@@ -158,6 +232,10 @@ export function SpeechBubble(props: {
         className="markdown-content"
       />
       <style>{`
+        .quick-reply-button:hover {
+          background: rgba(255, 255, 255, 0.16) !important;
+          border-color: rgba(255, 255, 255, 0.35) !important;
+        }
         .markdown-content p {
           margin: 0.5em 0;
         }

@@ -15,7 +15,8 @@ declare global {
   interface Window {
     setSpeechBubble?: (
       text: string,
-      options?: { durationMs?: number; speedMsPerChar?: number }
+      options?: { durationMs?: number; speedMsPerChar?: number },
+      quickReplies?: string[]
     ) => void;
     startLipSyncFromUrl?: (url: string) => void;
     startLipSyncFromArrayBuffer?: (buffer: ArrayBuffer) => void;
@@ -32,6 +33,8 @@ export function App() {
   const [speechText, setSpeechText] = useState('');
   const [speechOptions, setSpeechOptions] = useState<{ durationMs?: number; speedMsPerChar?: number } | undefined>(undefined);
   const [dismissSpeech, setDismissSpeech] = useState(false);
+  const [quickReplies, setQuickReplies] = useState<string[]>([]);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showSetupGuide, setShowSetupGuide] = useState(true); // Show initially while testing
@@ -178,12 +181,15 @@ export function App() {
 
     const showSpeech = (
       text: string,
-      options?: { durationMs?: number; speedMsPerChar?: number }
+      options?: { durationMs?: number; speedMsPerChar?: number },
+      quickRepliesPayload?: string[]
     ) => {
       setSpeechText(text);
       setSpeechOptions(options);
       setDismissSpeech(false);
       setTtsError(null);
+      setQuickReplies(Array.isArray(quickRepliesPayload) ? quickRepliesPayload.filter((item) => typeof item === 'string' && item.trim().length > 0) : []);
+      setShowQuickReplies(false);
     };
 
     // Expose global function for programmatic control
@@ -279,13 +285,19 @@ export function App() {
       } else if (data.type === 'speech' && typeof data.text === 'string') {
         cancelAudioPlayback();
         const currentGeneration = playbackGenerationRef.current;
-        showSpeech(data.text, data.options);
+        showSpeech(
+          data.text,
+          data.options,
+          Array.isArray(data.quickReplies) ? data.quickReplies : undefined
+        );
         if (data.audio && typeof data.audio.data === 'string') {
           void playAudioPayload(data.audio, currentGeneration);
         }
       } else if (data.type === 'dismissSpeech') {
         cancelAudioPlayback();
         setDismissSpeech(true);
+        setShowQuickReplies(false);
+        setQuickReplies([]);
       } else if (data.type === 'ttsError') {
         if (data.clear) {
           setTtsError(null);
@@ -397,6 +409,18 @@ export function App() {
     setShowSetupGuide(false);
   };
 
+  const handleQuickReplySelected = useCallback((reply: string) => {
+    const trimmed = reply.trim();
+    if (!trimmed) {
+      return;
+    }
+    const vscode = getOrAcquireVsCodeApi();
+    if (vscode) {
+      vscode.postMessage({ type: 'quickReplySelected', text: trimmed });
+    }
+    setShowQuickReplies(false);
+  }, [getOrAcquireVsCodeApi]);
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div style={{ width: '100%', height: '100%' }} ref={containerRef} />
@@ -406,9 +430,19 @@ export function App() {
           text={speechText}
           options={speechOptions}
           dismiss={dismissSpeech}
+          quickReplies={quickReplies}
+          showQuickReplies={showQuickReplies}
+          onQuickReplySelected={handleQuickReplySelected}
           onHidden={() => {
             setSpeechText('');
             setDismissSpeech(false);
+            setQuickReplies([]);
+            setShowQuickReplies(false);
+          }}
+          onTypingComplete={() => {
+            if (quickReplies.length > 0) {
+              setShowQuickReplies(true);
+            }
           }}
         />
       )}

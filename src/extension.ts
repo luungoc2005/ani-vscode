@@ -313,6 +313,12 @@ export function activate(context: vscode.ExtensionContext) {
         })();
       } else if (message.type === 'audioCapability') {
         agentLoop.setAudioCapability(Boolean(message.canPlay));
+      } else if (message.type === 'quickReplySelected' && typeof message.text === 'string') {
+        const replyText = message.text.trim();
+        if (replyText.length > 0) {
+          agentLoop.enqueueUserMessage(replyText, { priority: true });
+          agentLoop.trigger();
+        }
       }
     });
 

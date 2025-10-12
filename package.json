@@ -194,6 +194,11 @@
           "minimum": 0.5,
           "description": "How often (in minutes) a random plugin should automatically trigger. Set to 0 to disable periodic triggers."
         },
+        "ani-vscode.quickReplies.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "(Experimental) Enable quick reply suggestions from the AI."
+        },
         "ani-vscode.debugPanel": {
           "type": "boolean",
           "default": false,
