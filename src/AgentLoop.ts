@@ -721,6 +721,88 @@ export class AgentLoop {
     return text.replace(/\s*(?:<\/start_of_turn>|<\/end_of_turn>)+\s*$/i, '').trim();
   };
 
+  private messageContentToString(message: SystemMessage | HumanMessage | AIMessage | ToolMessage): string {
+    const content = (message as SystemMessage | HumanMessage | AIMessage | ToolMessage).content as any;
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    if (Array.isArray(content)) {
+      const segments = content
+        .map((part: any) => {
+          if (!part) {
+            return '';
+          }
+          if (typeof part === 'string') {
+            return part;
+          }
+          if (typeof part === 'object') {
+            if (typeof part.text === 'string') {
+              return part.text;
+            }
+            if (typeof part.data === 'string') {
+              return part.data;
+            }
+            try {
+              return JSON.stringify(part);
+            } catch {
+              return String(part);
+            }
+          }
+          return String(part);
+        })
+        .filter((segment: string) => segment.length > 0);
+      return segments.join('\n');
+    }
+
+    if (content && typeof content === 'object') {
+      if (typeof content.text === 'string') {
+        return content.text;
+      }
+      try {
+        return JSON.stringify(content);
+      } catch {
+        return String(content);
+      }
+    }
+
+    if (content == null) {
+      return '';
+    }
+
+    return String(content);
+  }
+
+  getChatHistoryForExport(): { messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string }> } {
+    const messages = this.chatHistory.map((msg) => {
+      let role: 'system' | 'user' | 'assistant' | 'tool';
+      if (msg instanceof SystemMessage) {
+        role = 'system';
+      } else if (msg instanceof HumanMessage) {
+        role = 'user';
+      } else if (msg instanceof AIMessage) {
+        role = 'assistant';
+      } else if (msg instanceof ToolMessage) {
+        role = 'tool';
+      } else {
+        role = 'user';
+      }
+
+      const serialized = {
+        role,
+        content: this.messageContentToString(msg),
+      } as { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string };
+
+      if (msg instanceof ToolMessage && typeof msg.tool_call_id === 'string') {
+        serialized.tool_call_id = msg.tool_call_id;
+      }
+
+      return serialized;
+    });
+
+    return { messages };
+  }
+
   /**
    * Trigger a specific plugin by ID
    */

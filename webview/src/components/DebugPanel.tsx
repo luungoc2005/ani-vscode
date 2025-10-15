@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { getVsCodeApi } from '../vscode';
 
 interface Motion {
   group: string;
@@ -28,6 +29,10 @@ export function DebugPanel({ visible }: DebugPanelProps) {
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [showOnlyErrors, setShowOnlyErrors] = useState(false);
+  const [isCopyingHistory, setIsCopyingHistory] = useState(false);
+  const [copyFeedbackKind, setCopyFeedbackKind] = useState<'idle' | 'success' | 'error'>('idle');
+  const [copyFeedbackMessage, setCopyFeedbackMessage] = useState('');
+  const vscodeApiRef = useRef(getVsCodeApi());
 
   useEffect(() => {
     // Intercept console methods
@@ -75,6 +80,57 @@ export function DebugPanel({ visible }: DebugPanelProps) {
   }, []);
 
   useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const data = event?.data as any;
+      if (!data || typeof data !== 'object') {
+        return;
+      }
+
+      if (data.type === 'chatHistoryExport') {
+        const attemptCopy = async () => {
+          try {
+            if (!navigator?.clipboard?.writeText) {
+              throw new Error('Clipboard API unavailable');
+            }
+            const json = JSON.stringify(data.payload, null, 2);
+            await navigator.clipboard.writeText(json);
+            setCopyFeedbackKind('success');
+            setCopyFeedbackMessage('Chat history copied to clipboard.');
+          } catch (error) {
+            console.error('Debug Panel - Failed to copy chat history', error);
+            setCopyFeedbackKind('error');
+            setCopyFeedbackMessage('Failed to copy chat history.');
+          } finally {
+            setIsCopyingHistory(false);
+          }
+        };
+        void attemptCopy();
+      } else if (data.type === 'chatHistoryExportError') {
+        const message = typeof data.message === 'string' && data.message.trim().length > 0
+          ? data.message
+          : 'Unable to export chat history.';
+        setCopyFeedbackKind('error');
+        setCopyFeedbackMessage(message);
+        setIsCopyingHistory(false);
+      }
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  useEffect(() => {
+    if (copyFeedbackKind === 'idle') {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setCopyFeedbackKind('idle');
+      setCopyFeedbackMessage('');
+    }, 4000);
+    return () => window.clearTimeout(timeout);
+  }, [copyFeedbackKind]);
+
+  useEffect(() => {
     // Fetch available motions when visible
     if (visible) {
       // Initial fetch
@@ -112,6 +168,30 @@ export function DebugPanel({ visible }: DebugPanelProps) {
     if ((window as any).playExpression) {
       (window as any).playExpression(expressionId);
     }
+  };
+
+  const handleCopyChatHistory = () => {
+    if (isCopyingHistory) {
+      return;
+    }
+    if (!navigator?.clipboard?.writeText) {
+      setCopyFeedbackKind('error');
+      setCopyFeedbackMessage('Clipboard access is not available in this environment.');
+      return;
+    }
+
+    const api = vscodeApiRef.current ?? getVsCodeApi();
+    if (!api) {
+      setCopyFeedbackKind('error');
+      setCopyFeedbackMessage('VS Code messaging API unavailable.');
+      return;
+    }
+
+    vscodeApiRef.current = api;
+    setIsCopyingHistory(true);
+    setCopyFeedbackKind('idle');
+    setCopyFeedbackMessage('');
+    api.postMessage({ type: 'requestChatHistoryExport' });
   };
 
   if (!visible) {
@@ -158,6 +238,47 @@ export function DebugPanel({ visible }: DebugPanelProps) {
         }}
       >
         🎭 Motion Debug Panel
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+        <button
+          onClick={handleCopyChatHistory}
+          disabled={isCopyingHistory}
+          style={{
+            backgroundColor: 'rgba(33, 150, 243, 0.15)',
+            color: '#64B5F6',
+            border: '1px solid rgba(33, 150, 243, 0.5)',
+            borderRadius: '4px',
+            padding: '6px 10px',
+            cursor: isCopyingHistory ? 'not-allowed' : 'pointer',
+            fontSize: '11px',
+            fontWeight: 'bold',
+            opacity: isCopyingHistory ? 0.6 : 1,
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            if (isCopyingHistory) return;
+            e.currentTarget.style.backgroundColor = 'rgba(33, 150, 243, 0.3)';
+            e.currentTarget.style.borderColor = '#90CAF9';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(33, 150, 243, 0.15)';
+            e.currentTarget.style.borderColor = 'rgba(33, 150, 243, 0.5)';
+          }}
+        >
+          {isCopyingHistory ? '📋 Copying…' : '📋 Copy Chat History'}
+        </button>
+        {copyFeedbackKind !== 'idle' && (
+          <div
+            style={{
+              fontSize: '10px',
+              color: copyFeedbackKind === 'success' ? '#4CAF50' : '#f44336',
+              lineHeight: 1.4,
+            }}
+          >
+            {copyFeedbackMessage}
+          </div>
+        )}
       </div>
 
       {currentModel && (

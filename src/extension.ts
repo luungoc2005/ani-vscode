@@ -319,6 +319,15 @@ export function activate(context: vscode.ExtensionContext) {
           agentLoop.enqueueUserMessage(replyText, { priority: true });
           agentLoop.trigger();
         }
+      } else if (message.type === 'requestChatHistoryExport') {
+        try {
+          const exportData = agentLoop.getChatHistoryForExport();
+          panel.webview.postMessage({ type: 'chatHistoryExport', payload: exportData });
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          outputChannel.appendLine(`[ani-vscode] Failed to export chat history: ${errorMessage}`);
+          panel.webview.postMessage({ type: 'chatHistoryExportError', message: errorMessage });
+        }
       }
     });
 
