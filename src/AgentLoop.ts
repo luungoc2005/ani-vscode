@@ -15,10 +15,14 @@ const QUICK_REPLY_TOOL = {
   function: {
     name: 'show_quick_replies',
     description:
-      'Display up to three concise quick-reply options for the user. The user can use these options to reply to you. Think and imagine about how the user would reply to your message. Do not just repeat what you said.',
+      'Think and imagine about how the user would reply to your message, then suggest up to three concise quick-reply options for the user. The user can use these options to reply to you. Do not just repeat what you said.',
     parameters: {
       type: 'object',
       properties: {
+        reasoning: {
+          type: 'string',
+          description: 'The reasoning behind the suggested quick replies.',
+        },
         replies: {
           type: 'array',
           description: 'Between one and three short replies for the user to choose from.',
@@ -646,7 +650,7 @@ export class AgentLoop {
   /**
    * Create plugin context for the current state
    */
-  private createPluginContext(editor: vscode.TextEditor | undefined, panel: vscode.WebviewPanel): PluginContext {
+  public createPluginContext(editor: vscode.TextEditor | undefined, panel: vscode.WebviewPanel): PluginContext {
     const lastEditedFiles: string[] = (this as any).lastEditedFiles || [];
     
     const getRelativePath = (absPath: string) => {

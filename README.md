@@ -1,9 +1,13 @@
 Ani VSCode
 ==========
 
-VSCode extension that opens a webview showing Live2D Cubism models (Hiyori and Mao) following the mouse without requiring mouse down.
+VSCode extension that shows a 2D character who watches you code. Think of it like a LLM-powered Clippy for VSCode.
 
-Almost entirely vibe-coded
+Disclaimer: The project is almost entirely vibe-coded
+
+# Screenshots
+| ![Screenshot 1](docs/ss_1.png) | ![Screenshot 2](docs/ss_2.png) |
+| --- | --- |
 
 # Features
 - Follow your editor caret position and mouse movements if you click inside the panel
@@ -11,6 +15,7 @@ Almost entirely vibe-coded
 - Read news from HackerNews + RSS Feeds and comment on the news
 - Comments on anything on your screen (disabled by default)
 - Can talk (using text to speech with pitch adjustment and lipsync)
+- Nudges you to take short breaks after long coding streaks
 
 # Usage
 - Open command panel (Cmd+Shift+P on MacOS), run "Ani: Show Assistant Panel" command.
@@ -49,6 +54,10 @@ Almost entirely vibe-coded
 | `ani-vscode.plugins.rssFeed.enabled` | boolean | `true` | Let Ani read and summarize articles from custom RSS feeds. |
 | `ani-vscode.plugins.rssFeed.weight` | number | `1` | Weight controlling how often the RSS Feed plugin runs. |
 | `ani-vscode.plugins.rssFeed.feeds` | string[] | `["https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml"]` | List of RSS feed URLs; one is chosen at random per trigger. |
+| `ani-vscode.plugins.breakReminder.enabled` | boolean | `true` | Enable break reminders when you've been heads-down for a while. |
+| `ani-vscode.plugins.breakReminder.weight` | number | `1` | Weight controlling how often the Break Reminder plugin runs. |
+| `ani-vscode.plugins.breakReminder.activeMinutes` | number | `10` | Minutes of continuous coding before Ani suggests pausing. |
+| `ani-vscode.plugins.breakReminder.cooldownMinutes` | number | `5` | Minimum minutes to wait before Ani offers another break. |
 | `ani-vscode.plugins.screenshot.enabled` | boolean | `false` | Capture your workspace and send it to a vision-capable LLM for commentary. |
 | `ani-vscode.plugins.screenshot.weight` | number | `2` | Weight controlling how often the screenshot plugin runs. |
 

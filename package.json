@@ -2,8 +2,8 @@
   "name": "ani-vscode",
   "displayName": "Ani VSCode",
   "description": "VSCode extension that gives you a little AI assistant in your code editor.",
-  "version": "0.0.2",
-  "publisher": "local",
+  "version": "0.0.3",
+  "publisher": "luungoc2005",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -176,6 +176,29 @@
           "default": 30,
           "minimum": 30,
           "description": "How long (in minutes) to cache weather responses before hitting the API again. Minimum 30 minutes."
+        },
+        "ani-vscode.plugins.breakReminder.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Break Reminder plugin that encourages short pauses after long coding streaks."
+        },
+        "ani-vscode.plugins.breakReminder.weight": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Weight for Break Reminder plugin selection (higher = more likely to trigger). Default: 1.0"
+        },
+        "ani-vscode.plugins.breakReminder.activeMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "Minutes of continuous activity before Ani suggests a break."
+        },
+        "ani-vscode.plugins.breakReminder.cooldownMinutes": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Minimum minutes to wait before another break reminder can trigger."
         },
         "ani-vscode.plugins.screenshot.enabled": {
           "type": "boolean",

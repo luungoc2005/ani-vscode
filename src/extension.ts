@@ -8,6 +8,7 @@ import { HackerNewsPlugin } from './plugins/HackerNewsPlugin';
 import { RSSFeedPlugin } from './plugins/RSSFeedPlugin';
 import { ScreenshotPlugin } from './plugins/ScreenshotPlugin';
 import { WeatherPlugin } from './plugins/WeatherPlugin';
+import { BreakReminderPlugin } from './plugins/BreakReminderPlugin';
 import { AgentLoop } from './AgentLoop';
 import { TelemetryService } from './TelemetryService';
 import { registerGitPushListener } from './plugins/git/GitIntegration';
@@ -164,8 +165,11 @@ export function activate(context: vscode.ExtensionContext) {
     const screenshotPlugin = new ScreenshotPlugin();
     pluginManager.register(screenshotPlugin);
 
-  const weatherPlugin = new WeatherPlugin();
-  pluginManager.register(weatherPlugin);
+    const weatherPlugin = new WeatherPlugin();
+    pluginManager.register(weatherPlugin);
+
+    const breakReminderPlugin = new BreakReminderPlugin();
+    pluginManager.register(breakReminderPlugin);
 
     // Record enabled plugins
     const enabledPlugins = pluginManager.getEnabledPlugins(cfg).map(p => p.id);
@@ -177,6 +181,11 @@ export function activate(context: vscode.ExtensionContext) {
     agentLoop.setExtensionPath(context.extensionPath);
     agentLoop.setCharacter(character);
     agentLoop.setTelemetryService(telemetry);
+
+    // Allow plugins to hook into VS Code events immediately
+    const activationEditor = vscode.window.activeTextEditor;
+    const pluginActivationContext = agentLoop.createPluginContext(activationEditor, panel);
+    pluginManager.activatePlugins(pluginActivationContext, cfg);
     
     // Track last edited files (MRU) for context
     const lastEditedFiles: string[] = [];
@@ -336,6 +345,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (panelColumn !== undefined) {
         context.globalState.update('ani-vscode.lastPanelColumn', panelColumn);
       }
+
+      pluginManager.deactivatePlugins();
       
       // Dispose of all listeners
       selectionListener.dispose();
