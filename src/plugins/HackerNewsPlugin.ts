@@ -237,7 +237,7 @@ export class HackerNewsPlugin implements IPlugin {
       const userPrompt = [
         articleSummary,
         '',
-        'Give me some insights or interesting thoughts about this article and the discussion happening in the comments. Be concise and witty.'
+        'Give me some insights or interesting thoughts about this article and the discussion happening in the comments. Do not use bullet points. Be concise and witty.'
       ].join('\n');
 
       return {

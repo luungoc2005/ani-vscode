@@ -13,7 +13,7 @@ Disclaimer: The project is almost entirely vibe-coded
 - Follow your editor caret position and mouse movements if you click inside the panel
 - Comments on your code
 - Read news from HackerNews + RSS Feeds and comment on the news
-- Comments on anything on your screen (disabled by default)
+- Comments on anything on your screen (disabled by default, you might need to enable some permissions to allow this plugin to function)
 - Can talk (using text to speech with pitch adjustment and lipsync)
 - Nudges you to take short breaks after long coding streaks
 
