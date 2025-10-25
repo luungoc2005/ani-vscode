@@ -6,6 +6,86 @@ import { CodeReviewPlugin } from '../CodeReviewPlugin';
 
 const OPERATION_PUSH = 10; // Mirrors vscode.git Operation.Push const enum value
 
+type OperationEventWithRepository = RepositoryOperationEvent & { readonly repository?: Repository };
+
+interface RepositoryTracker {
+  lastAhead?: number;
+  lastHandledCommit?: string;
+  isHandlingPush?: boolean;
+}
+
+const repositoryTrackers = new WeakMap<Repository, RepositoryTracker>();
+
+function getRepositoryTracker(repository: Repository): RepositoryTracker {
+  let tracker = repositoryTrackers.get(repository);
+  if (!tracker) {
+    tracker = {};
+    repositoryTrackers.set(repository, tracker);
+  }
+  return tracker;
+}
+
+function initializeRepositoryTracker(repository: Repository): void {
+  const tracker = getRepositoryTracker(repository);
+  const head = repository.state?.HEAD;
+  const ahead = typeof head?.ahead === 'number' ? head.ahead : undefined;
+  tracker.lastAhead = ahead;
+
+  if (tracker.lastHandledCommit === undefined && ahead === 0 && head?.commit) {
+    tracker.lastHandledCommit = head.commit;
+  }
+}
+
+function schedulePushCompliment(
+  repository: Repository,
+  codeReviewPlugin: CodeReviewPlugin,
+  agentLoop: AgentLoop
+): void {
+  const tracker = getRepositoryTracker(repository);
+  if (tracker.isHandlingPush) {
+    return;
+  }
+
+  tracker.isHandlingPush = true;
+  void handlePush(repository, codeReviewPlugin, agentLoop)
+    .catch((err) => {
+      console.error('[ani-vscode] Failed to process push compliment workflow', err);
+    })
+    .finally(() => {
+      tracker.isHandlingPush = false;
+    });
+}
+
+function handleRepositoryStateChange(
+  repository: Repository,
+  codeReviewPlugin: CodeReviewPlugin,
+  agentLoop: AgentLoop
+): void {
+  const tracker = getRepositoryTracker(repository);
+  const head = repository.state?.HEAD;
+
+  const ahead = typeof head?.ahead === 'number' ? head.ahead : undefined;
+  const commit = head?.commit;
+  const previousAhead = typeof tracker.lastAhead === 'number' ? tracker.lastAhead : undefined;
+
+  tracker.lastAhead = ahead;
+
+  if (!head || typeof previousAhead !== 'number' || typeof ahead !== 'number') {
+    return;
+  }
+
+  const transitionedToSynced = previousAhead > 0 && ahead === 0;
+  if (!transitionedToSynced || !commit) {
+    return;
+  }
+
+  if (tracker.lastHandledCommit === commit) {
+    return;
+  }
+
+  schedulePushCompliment(repository, codeReviewPlugin, agentLoop);
+}
+
 async function getGitApi(): Promise<GitAPI | null> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
   if (!extension) {
@@ -34,11 +114,22 @@ async function handlePush(
   codeReviewPlugin: CodeReviewPlugin,
   agentLoop: AgentLoop
 ): Promise<void> {
+  const tracker = getRepositoryTracker(repository);
   try {
     const commits = await repository.log({ maxEntries: 1 });
-    const lastCommitMessage = commits?.[0]?.message?.trim();
+    const lastCommit = commits?.[0];
+    const lastCommitMessage = lastCommit?.message?.trim();
     if (!lastCommitMessage) {
       return;
+    }
+
+    if (lastCommit?.hash) {
+      tracker.lastHandledCommit = lastCommit.hash;
+    }
+
+    const headAhead = repository.state?.HEAD?.ahead;
+    if (typeof headAhead === 'number') {
+      tracker.lastAhead = headAhead;
     }
 
     const repoName = path.basename(repository.rootUri.fsPath);
@@ -53,8 +144,6 @@ async function handlePush(
     console.error('[ani-vscode] Failed to read commit history for push event', err);
   }
 }
-
-type OperationEventWithRepository = RepositoryOperationEvent & { readonly repository?: Repository };
 
 function subscribeToPushEvents(
   repository: Repository,
@@ -85,9 +174,11 @@ function watchRepository(
   codeReviewPlugin: CodeReviewPlugin,
   agentLoop: AgentLoop
 ): void {
+  initializeRepositoryTracker(repository);
+
   const disposable = subscribeToPushEvents(repository, gitApi, (event: OperationEventWithRepository) => {
     if (event.operation === OPERATION_PUSH && !event.hasErrored) {
-      void handlePush(repository, codeReviewPlugin, agentLoop);
+      schedulePushCompliment(repository, codeReviewPlugin, agentLoop);
     }
   });
 
@@ -96,6 +187,19 @@ function watchRepository(
   } else {
     console.warn(
       '[ani-vscode] Git repository does not expose onDidRunOperation; push compliment notifications disabled for',
+      repository.rootUri.toString()
+    );
+  }
+
+  const stateEvent = repository.state?.onDidChange;
+  if (typeof stateEvent === 'function') {
+    const stateDisposable = stateEvent(() => {
+      handleRepositoryStateChange(repository, codeReviewPlugin, agentLoop);
+    });
+    disposables.push(stateDisposable);
+  } else if (repository.state) {
+    console.warn(
+      '[ani-vscode] Git repository state does not expose onDidChange; CLI push detection disabled for',
       repository.rootUri.toString()
     );
   }

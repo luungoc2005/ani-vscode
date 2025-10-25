@@ -2,7 +2,7 @@
   "name": "ani-vscode",
   "displayName": "Ani VSCode",
   "description": "VSCode extension that gives you a little AI assistant in your code editor.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "local",
   "engines": {
     "vscode": "^1.85.0"

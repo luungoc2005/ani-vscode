@@ -15,8 +15,27 @@ declare module 'vscode.git' {
 
   export interface Repository {
     readonly rootUri: vscode.Uri;
+    readonly state?: RepositoryState;
     readonly onDidRunOperation?: vscode.Event<RepositoryOperationEvent>;
     log(options?: LogOptions): Promise<Commit[]>;
+  }
+
+  export interface RepositoryState {
+    readonly HEAD?: Branch;
+    readonly onDidChange?: vscode.Event<void>;
+  }
+
+  export interface Branch {
+    readonly name?: string;
+    readonly commit?: string;
+    readonly upstream?: UpstreamRef;
+    readonly ahead?: number;
+    readonly behind?: number;
+  }
+
+  export interface UpstreamRef {
+    readonly name: string;
+    readonly remote: string;
   }
 
   export interface RepositoryOperationEvent {
